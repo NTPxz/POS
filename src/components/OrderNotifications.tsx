@@ -13,10 +13,10 @@ type Toast = {
   message: string;
 };
 
-const TOAST_MS = 16000;
+const TOAST_MS = 11000;
 const BATCH_MS = 900;
 
-// ทำนองแจ้งเตือน — เพลงสั้นๆ วนซ้ำจนยาวรวม ~15 วิ ให้ได้ยินชัดในร้านที่มีเสียงดัง
+// ทำนองแจ้งเตือน — เพลงสั้นๆ วนซ้ำจนยาวรวม ~10 วิ ให้ได้ยินชัดในร้านที่มีเสียงดัง
 const ORDER_NOTES = [
   { freq: 523.25, dur: 0.24 }, // C5
   { freq: 659.25, dur: 0.24 }, // E5
@@ -37,7 +37,7 @@ const BILL_NOTES = [
   { freq: 880, dur: 0.23 },
   { freq: 659.25, dur: 0.5 },
 ];
-const MELODY_REPEATS = 6;
+const MELODY_REPEATS = 4;
 const CYCLE_GAP = 0.3;
 const NOTE_GAIN_PEAK = 0.65;
 

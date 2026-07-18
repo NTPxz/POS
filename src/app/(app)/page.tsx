@@ -17,8 +17,8 @@ export default function PosPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setLoadError(null);
     try {
       const [prodRes, catRes] = await Promise.all([
@@ -71,7 +71,7 @@ export default function PosPage() {
           <p className="mb-3 text-sm">โหลดข้อมูลไม่สำเร็จ: {loadError}</p>
           <button
             className="btn-secondary inline-flex items-center gap-2"
-            onClick={loadData}
+            onClick={() => loadData()}
           >
             <RefreshCw className="h-4 w-4" strokeWidth={2} />
             ลองอีกครั้ง
@@ -81,13 +81,13 @@ export default function PosPage() {
         <QuickSaleView
           products={products}
           categories={categories}
-          onSaleDone={loadData}
+          onSaleDone={() => loadData(true)}
         />
       ) : (
         <TablesView
           products={products}
           categories={categories}
-          onProductsChanged={loadData}
+          onProductsChanged={() => loadData(true)}
         />
       )}
     </div>
