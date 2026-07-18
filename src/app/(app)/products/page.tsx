@@ -41,7 +41,7 @@ const EMPTY_FORM: ProductForm = {
 
 export default function ProductsPage() {
   return (
-    <RequireRole min="manager">
+    <RequireRole min="staff">
       <ProductsPageContent />
     </RequireRole>
   );

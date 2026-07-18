@@ -29,7 +29,7 @@ function startOfMonthInput(): string {
 
 export default function IncomePage() {
   return (
-    <RequireRole min="manager">
+    <RequireRole min="owner">
       <IncomePageContent />
     </RequireRole>
   );

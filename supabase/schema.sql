@@ -185,8 +185,8 @@ revoke execute on function public.get_email_by_phone from public;
 grant execute on function public.get_email_by_phone to anon, authenticated;
 
 -- ============================================================
--- Row Level Security: หมวดหมู่/สินค้า ทุกคนอ่านได้ (ต้องใช้ตอนขาย)
--- แก้ไข/ลบได้เฉพาะ manager ขึ้นไป — บิลขาย/รายการขายเปิดให้พนักงานทุกคน
+-- Row Level Security: หมวดหมู่/สินค้า — staff และ manager แก้ไขได้เท่ากัน
+-- (ใช้จัดการสต๊อก/สินค้าหน้างานได้เอง) — บิลขาย/รายการขายเปิดให้พนักงานทุกคน
 -- ============================================================
 alter table public.categories enable row level security;
 alter table public.products enable row level security;
@@ -197,21 +197,21 @@ drop policy if exists "authenticated full access" on public.categories;
 create policy "select categories" on public.categories
   for select to authenticated using (true);
 create policy "insert categories" on public.categories
-  for insert to authenticated with check (public.is_manager_or_above());
+  for insert to authenticated with check (true);
 create policy "update categories" on public.categories
-  for update to authenticated using (public.is_manager_or_above()) with check (public.is_manager_or_above());
+  for update to authenticated using (true) with check (true);
 create policy "delete categories" on public.categories
-  for delete to authenticated using (public.is_manager_or_above());
+  for delete to authenticated using (true);
 
 drop policy if exists "authenticated full access" on public.products;
 create policy "select products" on public.products
   for select to authenticated using (true);
 create policy "insert products" on public.products
-  for insert to authenticated with check (public.is_manager_or_above());
+  for insert to authenticated with check (true);
 create policy "update products" on public.products
-  for update to authenticated using (public.is_manager_or_above()) with check (public.is_manager_or_above());
+  for update to authenticated using (true) with check (true);
 create policy "delete products" on public.products
-  for delete to authenticated using (public.is_manager_or_above());
+  for delete to authenticated using (true);
 
 drop policy if exists "authenticated full access" on public.sales;
 create policy "authenticated full access" on public.sales
@@ -299,7 +299,7 @@ end;
 $$;
 
 -- ============================================================
--- ฟังก์ชันยกเลิกบิล: เปลี่ยนสถานะเป็น voided และคืนสต๊อก (manager ขึ้นไปเท่านั้น)
+-- ฟังก์ชันยกเลิกบิล: เปลี่ยนสถานะเป็น voided และคืนสต๊อก (พนักงานทุกคนทำได้)
 -- ============================================================
 create or replace function public.void_sale(p_sale_id uuid)
 returns void
@@ -312,9 +312,6 @@ declare
 begin
   if auth.uid() is null then
     raise exception 'ต้องล็อกอินก่อน';
-  end if;
-  if not public.is_manager_or_above() then
-    raise exception 'ไม่มีสิทธิ์ยกเลิกบิล (ต้องเป็นผู้จัดการขึ้นไป)';
   end if;
 
   update sales set status = 'voided', voided_at = now()
@@ -371,13 +368,13 @@ alter table public.expenses enable row level security;
 
 drop policy if exists "authenticated full access" on public.expense_categories;
 drop policy if exists "manager full access" on public.expense_categories;
-create policy "manager full access" on public.expense_categories
-  for all to authenticated using (public.is_manager_or_above()) with check (public.is_manager_or_above());
+create policy "owner full access" on public.expense_categories
+  for all to authenticated using (public.is_owner()) with check (public.is_owner());
 
 drop policy if exists "authenticated full access" on public.expenses;
 drop policy if exists "manager full access" on public.expenses;
-create policy "manager full access" on public.expenses
-  for all to authenticated using (public.is_manager_or_above()) with check (public.is_manager_or_above());
+create policy "owner full access" on public.expenses
+  for all to authenticated using (public.is_owner()) with check (public.is_owner());
 
 insert into public.expense_categories (name, position) values
   ('ต้นทุนเริ่มต้น/เงินลงทุน', 1),
@@ -392,7 +389,7 @@ on conflict (name) do nothing;
 
 -- ============================================================
 -- รายได้อื่นๆ นอกเหนือจากยอดขาย POS (ซึ่งนับอัตโนมัติอยู่แล้ว)
--- เข้าถึงได้เฉพาะ manager ขึ้นไปเช่นเดียวกับรายจ่าย
+-- เข้าถึงได้เฉพาะ owner เท่านั้นเช่นเดียวกับรายจ่าย
 -- ============================================================
 create table if not exists public.income_categories (
   id uuid primary key default gen_random_uuid(),
@@ -419,12 +416,12 @@ alter table public.income_categories enable row level security;
 alter table public.income enable row level security;
 
 drop policy if exists "manager full access" on public.income_categories;
-create policy "manager full access" on public.income_categories
-  for all to authenticated using (public.is_manager_or_above()) with check (public.is_manager_or_above());
+create policy "owner full access" on public.income_categories
+  for all to authenticated using (public.is_owner()) with check (public.is_owner());
 
 drop policy if exists "manager full access" on public.income;
-create policy "manager full access" on public.income
-  for all to authenticated using (public.is_manager_or_above()) with check (public.is_manager_or_above());
+create policy "owner full access" on public.income
+  for all to authenticated using (public.is_owner()) with check (public.is_owner());
 
 insert into public.income_categories (name, position) values
   ('รายได้จากการขายอื่นๆ', 1),

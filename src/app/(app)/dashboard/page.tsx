@@ -52,7 +52,7 @@ function periodStart(p: Period): Date {
 
 export default function DashboardPage() {
   return (
-    <RequireRole min="manager">
+    <RequireRole min="owner">
       <DashboardPageContent />
     </RequireRole>
   );

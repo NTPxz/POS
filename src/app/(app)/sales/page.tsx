@@ -15,7 +15,7 @@ import RequireRole from "@/components/RequireRole";
 
 export default function SalesPage() {
   return (
-    <RequireRole min="manager">
+    <RequireRole min="staff">
       <SalesPageContent />
     </RequireRole>
   );

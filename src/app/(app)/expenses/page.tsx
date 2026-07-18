@@ -14,7 +14,7 @@ function startOfMonthInput(): string {
 
 export default function ExpensesPage() {
   return (
-    <RequireRole min="manager">
+    <RequireRole min="owner">
       <ExpensesPageContent />
     </RequireRole>
   );

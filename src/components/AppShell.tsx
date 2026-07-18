@@ -24,11 +24,11 @@ const NAV_ITEMS: {
   minRole: Role;
 }[] = [
   { href: "/", label: "ขายสินค้า", icon: ShoppingCart, minRole: "staff" },
-  { href: "/dashboard", label: "ภาพรวม", icon: LayoutDashboard, minRole: "manager" },
-  { href: "/sales", label: "ประวัติขาย", icon: Receipt, minRole: "manager" },
-  { href: "/income", label: "รายได้", icon: TrendingUp, minRole: "manager" },
-  { href: "/expenses", label: "รายจ่าย", icon: Wallet, minRole: "manager" },
-  { href: "/products", label: "สินค้า", icon: Package, minRole: "manager" },
+  { href: "/sales", label: "ประวัติขาย", icon: Receipt, minRole: "staff" },
+  { href: "/products", label: "สินค้า", icon: Package, minRole: "staff" },
+  { href: "/dashboard", label: "ภาพรวม", icon: LayoutDashboard, minRole: "owner" },
+  { href: "/income", label: "รายได้", icon: TrendingUp, minRole: "owner" },
+  { href: "/expenses", label: "รายจ่าย", icon: Wallet, minRole: "owner" },
   { href: "/staff", label: "พนักงาน", icon: Users, minRole: "owner" },
 ];
 
