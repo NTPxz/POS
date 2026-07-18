@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -50,8 +51,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {/* Sidebar สำหรับจอใหญ่ (iPad แนวนอน / PC) */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-neutral-200 bg-white md:flex">
         <div className="flex items-center gap-2.5 px-5 py-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 text-white">
-            <ShoppingCart className="h-5 w-5" strokeWidth={2.25} />
+          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl">
+            <Image
+              src="/logo.png"
+              alt="โลโก้ร้าน"
+              width={40}
+              height={40}
+              className="h-full w-full object-cover"
+              priority
+            />
           </div>
           <div>
             <p className="font-bold leading-tight">POS</p>

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ShoppingCart } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
@@ -52,8 +52,15 @@ export default function LoginPage() {
     <main className="flex min-h-dvh items-center justify-center bg-gradient-to-br from-brand-700 via-brand-800 to-neutral-900 p-4">
       <div className="w-full max-w-sm rounded-3xl bg-white p-8 shadow-2xl">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-600 text-white">
-            <ShoppingCart className="h-8 w-8" strokeWidth={2} />
+          <div className="mx-auto mb-3 h-16 w-16 overflow-hidden rounded-2xl shadow-sm">
+            <Image
+              src="/logo.png"
+              alt="โลโก้ร้าน"
+              width={64}
+              height={64}
+              className="h-full w-full object-cover"
+              priority
+            />
           </div>
           <h1 className="text-2xl font-bold">ระบบขายหน้าร้าน</h1>
           <p className="mt-1 text-sm text-neutral-500">

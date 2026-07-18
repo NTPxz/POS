@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "POS - ระบบขายหน้าร้าน",
+  title: "หม่าล่า เป่ง - ระบบขายหน้าร้าน",
   description: "ระบบขายหน้าร้าน บันทึกยอดขาย ต้นทุน และกำไร",
 };
 
