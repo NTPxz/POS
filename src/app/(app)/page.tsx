@@ -317,16 +317,22 @@ function ProductCard({
       onClick={onAdd}
       className="card relative flex flex-col overflow-hidden text-left transition active:scale-[0.97] hover:border-brand-300"
     >
-      <div className="flex aspect-square items-center justify-center bg-neutral-50">
+      <div className="relative aspect-square w-full shrink-0 overflow-hidden bg-neutral-50">
         {product.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={product.image_url}
             alt={product.name}
-            className="h-full w-full object-cover"
+            width={400}
+            height={400}
+            loading="lazy"
+            decoding="async"
+            className="absolute inset-0 h-full w-full object-cover"
           />
         ) : (
-          <Package className="h-10 w-10 text-neutral-300" strokeWidth={1.5} />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Package className="h-10 w-10 text-neutral-300" strokeWidth={1.5} />
+          </div>
         )}
       </div>
       {product.track_stock && (
