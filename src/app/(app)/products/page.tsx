@@ -4,10 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
+  ImageOff,
   Package,
   Plus,
   RefreshCw,
   Tag,
+  Upload,
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -364,12 +366,43 @@ function ProductModal({
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const set = (patch: Partial<ProductForm>) =>
     setForm((f) => ({ ...f, ...patch }));
 
   const price = parseFloat(form.price) || 0;
   const cost = parseFloat(form.cost) || 0;
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setUploadError("เลือกไฟล์รูปภาพเท่านั้น");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError("ไฟล์ใหญ่เกิน 5MB");
+      return;
+    }
+    setUploading(true);
+    setUploadError(null);
+    const ext = file.name.split(".").pop() || "jpg";
+    const path = `${crypto.randomUUID()}.${ext}`;
+    const { error: uploadErr } = await supabase.storage
+      .from("product-images")
+      .upload(path, file, { cacheControl: "3600", upsert: false });
+    if (uploadErr) {
+      setUploadError(`อัปโหลดไม่สำเร็จ: ${uploadErr.message}`);
+      setUploading(false);
+      return;
+    }
+    const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+    set({ image_url: data.publicUrl });
+    setUploading(false);
+  }
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -523,14 +556,42 @@ function ProductModal({
             </div>
           )}
 
-          <Field label="ลิงก์รูปภาพ (ถ้ามี)">
+          <Field label="รูปภาพสินค้า (ถ้ามี)">
+            <div className="flex items-center gap-3">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50">
+                {form.image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={form.image_url}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <ImageOff className="h-5 w-5 text-neutral-300" strokeWidth={1.5} />
+                )}
+              </div>
+              <label className="btn-secondary inline-flex flex-1 cursor-pointer items-center justify-center gap-2 px-4 py-2.5 text-sm">
+                <Upload className="h-4 w-4" strokeWidth={2} />
+                {uploading ? "กำลังอัปโหลด..." : "เลือกรูปจากเครื่อง"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleFileChange}
+                  disabled={uploading}
+                />
+              </label>
+            </div>
             <input
               type="url"
-              className="input"
+              className="input mt-2"
               value={form.image_url}
               onChange={(e) => set({ image_url: e.target.value })}
-              placeholder="https://..."
+              placeholder="หรือวางลิงก์รูปภาพเอง (https://...)"
             />
+            {uploadError && (
+              <p className="mt-1.5 text-xs text-red-600">{uploadError}</p>
+            )}
           </Field>
 
           {error && (
