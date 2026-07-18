@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Package, Plus, Tag, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { baht, formatNumber } from "@/lib/format";
 import { Category, Product } from "@/lib/types";
@@ -92,11 +93,19 @@ export default function ProductsPage() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold md:text-2xl">จัดการสินค้า</h1>
         <div className="flex gap-2">
-          <button className="btn-secondary" onClick={() => setCatModalOpen(true)}>
-            🏷️ หมวดหมู่
+          <button
+            className="btn-secondary inline-flex items-center gap-2"
+            onClick={() => setCatModalOpen(true)}
+          >
+            <Tag className="h-4 w-4" strokeWidth={2} />
+            หมวดหมู่
           </button>
-          <button className="btn-primary" onClick={openAdd}>
-            + เพิ่มสินค้า
+          <button
+            className="btn-primary inline-flex items-center gap-2"
+            onClick={openAdd}
+          >
+            <Plus className="h-4 w-4" strokeWidth={2.5} />
+            เพิ่มสินค้า
           </button>
         </div>
       </div>
@@ -112,8 +121,8 @@ export default function ProductsPage() {
         <p className="py-16 text-center text-slate-400">กำลังโหลด...</p>
       ) : filtered.length === 0 ? (
         <div className="py-16 text-center text-slate-400">
-          <p className="mb-1 text-4xl">📦</p>
-          <p>{products.length === 0 ? "ยังไม่มีสินค้า — กด “+ เพิ่มสินค้า” เพื่อเริ่มต้น" : "ไม่พบสินค้าที่ค้นหา"}</p>
+          <Package className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
+          <p>{products.length === 0 ? "ยังไม่มีสินค้า — กด “เพิ่มสินค้า” เพื่อเริ่มต้น" : "ไม่พบสินค้าที่ค้นหา"}</p>
         </div>
       ) : (
         <>
@@ -160,7 +169,7 @@ export default function ProductsPage() {
                       <td className="px-4 py-3 text-right">
                         {p.track_stock ? (
                           <span
-                            className={`font-semibold ${
+                            className={`inline-flex items-center gap-1 font-semibold ${
                               p.stock <= 0
                                 ? "text-red-600"
                                 : low
@@ -169,7 +178,12 @@ export default function ProductsPage() {
                             }`}
                           >
                             {formatNumber(p.stock)}
-                            {low && " ⚠️"}
+                            {low && (
+                              <AlertTriangle
+                                className="h-3.5 w-3.5"
+                                strokeWidth={2}
+                              />
+                            )}
                           </span>
                         ) : (
                           <span className="text-slate-400">ไม่นับ</span>
@@ -360,7 +374,7 @@ function ProductModal({
             onClick={onClose}
             className="rounded-full p-2 text-slate-400 hover:bg-slate-100"
           >
-            ✕
+            <X className="h-5 w-5" strokeWidth={2} />
           </button>
         </div>
 
@@ -542,7 +556,7 @@ function CategoryModal({
             onClick={onClose}
             className="rounded-full p-2 text-slate-400 hover:bg-slate-100"
           >
-            ✕
+            <X className="h-5 w-5" strokeWidth={2} />
           </button>
         </div>
 

@@ -1,6 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Banknote,
+  CheckCircle2,
+  CreditCard,
+  Minus,
+  Package,
+  Plus,
+  ShoppingCart,
+  Smartphone,
+  Trash2,
+  X,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { baht, formatNumber } from "@/lib/format";
 import {
@@ -10,6 +22,12 @@ import {
   PAYMENT_LABELS,
   Product,
 } from "@/lib/types";
+
+const PAYMENT_ICONS: Record<PaymentMethod, typeof Banknote> = {
+  cash: Banknote,
+  transfer: Smartphone,
+  card: CreditCard,
+};
 
 export default function PosPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -160,7 +178,7 @@ export default function PosPage() {
           <p className="py-16 text-center text-slate-400">กำลังโหลดสินค้า...</p>
         ) : filtered.length === 0 ? (
           <div className="py-16 text-center text-slate-400">
-            <p className="mb-1 text-4xl">📦</p>
+            <Package className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
             <p>
               {products.length === 0
                 ? "ยังไม่มีสินค้า — ไปที่เมนู “สินค้า” เพื่อเพิ่มสินค้า"
@@ -210,7 +228,7 @@ export default function PosPage() {
                 onClick={() => setCartOpen(false)}
                 className="rounded-full p-2 text-slate-400 hover:bg-slate-100"
               >
-                ✕
+                <X className="h-5 w-5" strokeWidth={2} />
               </button>
             </div>
             {cartPanel}
@@ -275,7 +293,7 @@ function ProductCard({
       onClick={onAdd}
       className="card relative flex flex-col overflow-hidden text-left transition active:scale-[0.97] hover:border-blue-300"
     >
-      <div className="flex aspect-square items-center justify-center bg-slate-50 text-4xl">
+      <div className="flex aspect-square items-center justify-center bg-slate-50">
         {product.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -284,7 +302,7 @@ function ProductCard({
             className="h-full w-full object-cover"
           />
         ) : (
-          <span>📦</span>
+          <Package className="h-10 w-10 text-slate-300" strokeWidth={1.5} />
         )}
       </div>
       {product.track_stock && (
@@ -344,7 +362,7 @@ function CartPanel({
       <div className="flex-1 overflow-y-auto p-4">
         {cart.length === 0 ? (
           <div className="py-16 text-center text-slate-400">
-            <p className="mb-1 text-4xl">🛒</p>
+            <ShoppingCart className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
             <p className="text-sm">แตะสินค้าเพื่อเพิ่มลงตะกร้า</p>
           </div>
         ) : (
@@ -367,20 +385,20 @@ function CartPanel({
                 </div>
                 <div className="flex items-center gap-1">
                   <QtyButton onClick={() => onChangeQty(item.product.id, -1)}>
-                    −
+                    <Minus className="h-4 w-4" strokeWidth={2.5} />
                   </QtyButton>
                   <span className="w-8 text-center font-semibold">
                     {formatNumber(item.quantity)}
                   </span>
                   <QtyButton onClick={() => onChangeQty(item.product.id, 1)}>
-                    +
+                    <Plus className="h-4 w-4" strokeWidth={2.5} />
                   </QtyButton>
                   <button
                     onClick={() => onRemove(item.product.id)}
                     className="ml-1 p-1 text-slate-300 hover:text-red-500"
                     aria-label="ลบรายการ"
                   >
-                    🗑
+                    <Trash2 className="h-4 w-4" strokeWidth={2} />
                   </button>
                 </div>
               </li>
@@ -418,7 +436,7 @@ function QtyButton({
   return (
     <button
       onClick={onClick}
-      className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-lg font-bold text-slate-600 transition active:scale-95 hover:bg-slate-200"
+      className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-600 transition active:scale-95 hover:bg-slate-200"
     >
       {children}
     </button>
@@ -490,7 +508,7 @@ function CheckoutModal({
             onClick={onClose}
             className="rounded-full p-2 text-slate-400 hover:bg-slate-100"
           >
-            ✕
+            <X className="h-5 w-5" strokeWidth={2} />
           </button>
         </div>
 
@@ -527,20 +545,23 @@ function CheckoutModal({
               วิธีชำระเงิน
             </p>
             <div className="grid grid-cols-3 gap-2">
-              {(Object.keys(PAYMENT_LABELS) as PaymentMethod[]).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setMethod(m)}
-                  className={`rounded-xl border-2 py-3 font-semibold transition ${
-                    method === m
-                      ? "border-blue-600 bg-blue-50 text-blue-700"
-                      : "border-slate-200 text-slate-600 hover:border-slate-300"
-                  }`}
-                >
-                  {m === "cash" ? "💵" : m === "transfer" ? "📱" : "💳"}{" "}
-                  {PAYMENT_LABELS[m]}
-                </button>
-              ))}
+              {(Object.keys(PAYMENT_LABELS) as PaymentMethod[]).map((m) => {
+                const Icon = PAYMENT_ICONS[m];
+                return (
+                  <button
+                    key={m}
+                    onClick={() => setMethod(m)}
+                    className={`flex flex-col items-center gap-1.5 rounded-xl border-2 py-3 font-semibold transition ${
+                      method === m
+                        ? "border-blue-600 bg-blue-50 text-blue-700"
+                        : "border-slate-200 text-slate-600 hover:border-slate-300"
+                    }`}
+                  >
+                    <Icon className="h-5 w-5" strokeWidth={2} />
+                    {PAYMENT_LABELS[m]}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -636,8 +657,8 @@ function SuccessModal({
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-sm rounded-3xl bg-white p-8 text-center">
-        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-3xl">
-          ✅
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-green-600">
+          <CheckCircle2 className="h-9 w-9" strokeWidth={2} />
         </div>
         <h2 className="text-xl font-bold">ขายสำเร็จ!</h2>
         <p className="mt-2 text-3xl font-bold text-blue-600">

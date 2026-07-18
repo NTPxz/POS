@@ -2,13 +2,20 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import {
+  LayoutDashboard,
+  LogOut,
+  Package,
+  Receipt,
+  ShoppingCart,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 const NAV_ITEMS = [
-  { href: "/", label: "ขายสินค้า", icon: "🛒" },
-  { href: "/dashboard", label: "ภาพรวม", icon: "📊" },
-  { href: "/sales", label: "ประวัติขาย", icon: "🧾" },
-  { href: "/products", label: "สินค้า", icon: "📦" },
+  { href: "/", label: "ขายสินค้า", icon: ShoppingCart },
+  { href: "/dashboard", label: "ภาพรวม", icon: LayoutDashboard },
+  { href: "/sales", label: "ประวัติขาย", icon: Receipt },
+  { href: "/products", label: "สินค้า", icon: Package },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -27,8 +34,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {/* Sidebar สำหรับจอใหญ่ (iPad แนวนอน / PC) */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-slate-200 bg-white md:flex">
         <div className="flex items-center gap-2.5 px-5 py-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-xl">
-            🛒
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">
+            <ShoppingCart className="h-5 w-5" strokeWidth={2.25} />
           </div>
           <div>
             <p className="font-bold leading-tight">POS</p>
@@ -38,6 +45,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 space-y-1 px-3">
           {NAV_ITEMS.map((item) => {
             const active = pathname === item.href;
+            const Icon = item.icon;
             return (
               <Link
                 key={item.href}
@@ -48,7 +56,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     : "text-slate-600 hover:bg-slate-50"
                 }`}
               >
-                <span className="text-lg">{item.icon}</span>
+                <Icon className="h-5 w-5" strokeWidth={2} />
                 {item.label}
               </Link>
             );
@@ -59,7 +67,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             onClick={handleLogout}
             className="flex w-full items-center gap-3 rounded-xl px-4 py-3 font-medium text-slate-500 transition hover:bg-red-50 hover:text-red-600"
           >
-            <span className="text-lg">🚪</span>
+            <LogOut className="h-5 w-5" strokeWidth={2} />
             ออกจากระบบ
           </button>
         </div>
@@ -74,6 +82,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
         {NAV_ITEMS.map((item) => {
           const active = pathname === item.href;
+          const Icon = item.icon;
           return (
             <Link
               key={item.href}
@@ -82,7 +91,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 active ? "text-blue-600" : "text-slate-500"
               }`}
             >
-              <span className="text-xl">{item.icon}</span>
+              <Icon className="h-5 w-5" strokeWidth={2} />
               {item.label}
             </Link>
           );
@@ -91,7 +100,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           onClick={handleLogout}
           className="flex flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium text-slate-500"
         >
-          <span className="text-xl">🚪</span>
+          <LogOut className="h-5 w-5" strokeWidth={2} />
           ออก
         </button>
       </nav>

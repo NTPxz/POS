@@ -1,9 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Banknote,
+  CheckCircle2,
+  CreditCard,
+  Smartphone,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { baht, formatNumber, startOfDayISO, daysAgo } from "@/lib/format";
 import { PAYMENT_LABELS, PaymentMethod, Product, SaleWithItems } from "@/lib/types";
+
+const PAYMENT_ICONS: Record<PaymentMethod, typeof Banknote> = {
+  cash: Banknote,
+  transfer: Smartphone,
+  card: CreditCard,
+};
 
 type Period = "today" | "7d" | "30d" | "month";
 
@@ -228,15 +240,21 @@ export default function DashboardPage() {
                   </p>
                 ) : (
                   <ul className="space-y-2">
-                    {[...byPayment.entries()].map(([m, v]) => (
-                      <li key={m} className="flex items-center justify-between">
-                        <span className="text-sm text-slate-600">
-                          {m === "cash" ? "💵" : m === "transfer" ? "📱" : "💳"}{" "}
-                          {PAYMENT_LABELS[m] ?? m}
-                        </span>
-                        <span className="font-semibold">{baht(v)}</span>
-                      </li>
-                    ))}
+                    {[...byPayment.entries()].map(([m, v]) => {
+                      const Icon = PAYMENT_ICONS[m];
+                      return (
+                        <li
+                          key={m}
+                          className="flex items-center justify-between"
+                        >
+                          <span className="flex items-center gap-2 text-sm text-slate-600">
+                            <Icon className="h-4 w-4" strokeWidth={2} />
+                            {PAYMENT_LABELS[m] ?? m}
+                          </span>
+                          <span className="font-semibold">{baht(v)}</span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>
@@ -252,8 +270,9 @@ export default function DashboardPage() {
                   )}
                 </h2>
                 {lowStock.length === 0 ? (
-                  <p className="py-4 text-center text-sm text-slate-400">
-                    สต๊อกสินค้าปกติดี 👍
+                  <p className="flex items-center justify-center gap-1.5 py-4 text-center text-sm text-slate-400">
+                    <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
+                    สต๊อกสินค้าปกติดี
                   </p>
                 ) : (
                   <ul className="space-y-2">

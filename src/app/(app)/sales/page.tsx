@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Receipt } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { baht, billNumber, formatDateTime, formatNumber } from "@/lib/format";
 import { PAYMENT_LABELS, SaleWithItems } from "@/lib/types";
@@ -110,7 +111,7 @@ export default function SalesPage() {
         <p className="py-16 text-center text-slate-400">กำลังโหลด...</p>
       ) : sales.length === 0 ? (
         <div className="py-16 text-center text-slate-400">
-          <p className="mb-1 text-4xl">🧾</p>
+          <Receipt className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
           <p>ไม่มีรายการขายในช่วงวันที่เลือก</p>
         </div>
       ) : (
