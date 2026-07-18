@@ -106,40 +106,42 @@ function ExpensesPageContent() {
 
   return (
     <div className="flex-1 p-4 md:p-6">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-bold md:text-2xl">รายจ่าย / ต้นทุน</h1>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2 text-sm">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex items-center gap-2">
             <input
               type="date"
-              className="input w-auto py-2"
+              className="input min-w-0 flex-1 py-2 sm:w-36 sm:flex-none"
               value={from}
               max={to}
               onChange={(e) => setFrom(e.target.value)}
             />
-            <span className="text-neutral-400">ถึง</span>
+            <span className="shrink-0 text-sm text-neutral-400">ถึง</span>
             <input
               type="date"
-              className="input w-auto py-2"
+              className="input min-w-0 flex-1 py-2 sm:w-36 sm:flex-none"
               value={to}
               min={from}
               onChange={(e) => setTo(e.target.value)}
             />
           </div>
-          <button
-            className="btn-secondary inline-flex items-center gap-2"
-            onClick={() => setCatModalOpen(true)}
-          >
-            <Tag className="h-4 w-4" strokeWidth={2} />
-            หมวดหมู่
-          </button>
-          <button
-            className="btn-primary inline-flex items-center gap-2"
-            onClick={openAdd}
-          >
-            <Plus className="h-4 w-4" strokeWidth={2.5} />
-            บันทึกรายจ่าย
-          </button>
+          <div className="flex gap-2">
+            <button
+              className="btn-secondary inline-flex flex-1 items-center justify-center gap-2 sm:flex-none"
+              onClick={() => setCatModalOpen(true)}
+            >
+              <Tag className="h-4 w-4" strokeWidth={2} />
+              หมวดหมู่
+            </button>
+            <button
+              className="btn-primary inline-flex flex-1 items-center justify-center gap-2 sm:flex-none"
+              onClick={openAdd}
+            >
+              <Plus className="h-4 w-4" strokeWidth={2.5} />
+              บันทึกรายจ่าย
+            </button>
+          </div>
         </div>
       </div>
 
