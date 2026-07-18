@@ -16,6 +16,22 @@ type Toast = {
 const TOAST_MS = 8000;
 const BATCH_MS = 900;
 
+// ทำนองแจ้งเตือน — วนซ้ำหลายรอบให้ยาวและได้ยินชัดในร้านที่มีเสียงดัง
+const ORDER_NOTES = [
+  { freq: 523.25, dur: 0.16 }, // C5
+  { freq: 659.25, dur: 0.16 }, // E5
+  { freq: 783.99, dur: 0.16 }, // G5
+  { freq: 1046.5, dur: 0.34 }, // C6
+];
+const BILL_NOTES = [
+  { freq: 880, dur: 0.18 },
+  { freq: 659.25, dur: 0.18 },
+  { freq: 880, dur: 0.18 },
+  { freq: 659.25, dur: 0.36 },
+];
+const MELODY_REPEATS = 4;
+const NOTE_GAIN_PEAK = 0.55;
+
 export default function OrderNotifications() {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
@@ -51,22 +67,30 @@ export default function OrderNotifications() {
       const ctx = audioCtxRef.current ?? new Ctx();
       audioCtxRef.current = ctx;
       if (ctx.state === "suspended") ctx.resume().catch(() => {});
+
+      const notes = tone === "bill" ? BILL_NOTES : ORDER_NOTES;
+      const cycleDur = notes.reduce((sum, n) => sum + n.dur, 0) + 0.02 * notes.length;
+      const cycleGap = 0.18;
+
       const now = ctx.currentTime;
-      const freqs = tone === "bill" ? [660, 990, 660] : [880, 1175];
-      freqs.forEach((freq, i) => {
-        const start = now + i * 0.15;
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(0.28, start + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.28);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(start);
-        osc.stop(start + 0.3);
-      });
+      for (let rep = 0; rep < MELODY_REPEATS; rep++) {
+        let t = now + rep * (cycleDur + cycleGap);
+        for (const note of notes) {
+          const start = t;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "triangle";
+          osc.frequency.value = note.freq;
+          gain.gain.setValueAtTime(0.0001, start);
+          gain.gain.exponentialRampToValueAtTime(NOTE_GAIN_PEAK, start + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, start + note.dur);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(start);
+          osc.stop(start + note.dur + 0.02);
+          t += note.dur + 0.02;
+        }
+      }
     } catch {
       // เบราว์เซอร์บางตัวอาจบล็อกก่อน user gesture — ไม่ใช่ error ร้ายแรง ปล่อยผ่าน
     }
