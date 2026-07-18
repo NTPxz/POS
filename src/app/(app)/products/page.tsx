@@ -1,0 +1,615 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { baht, formatNumber } from "@/lib/format";
+import { Category, Product } from "@/lib/types";
+
+type ProductForm = {
+  name: string;
+  barcode: string;
+  category_id: string;
+  price: string;
+  cost: string;
+  stock: string;
+  track_stock: boolean;
+  low_stock_threshold: string;
+  image_url: string;
+};
+
+const EMPTY_FORM: ProductForm = {
+  name: "",
+  barcode: "",
+  category_id: "",
+  price: "",
+  cost: "",
+  stock: "0",
+  track_stock: true,
+  low_stock_threshold: "5",
+  image_url: "",
+};
+
+export default function ProductsPage() {
+  const supabase = useMemo(() => createClient(), []);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<Product | null>(null);
+  const [catModalOpen, setCatModalOpen] = useState(false);
+
+  const loadData = useCallback(async () => {
+    const [prodRes, catRes] = await Promise.all([
+      supabase
+        .from("products")
+        .select("*")
+        .eq("is_active", true)
+        .order("name"),
+      supabase.from("categories").select("*").order("position"),
+    ]);
+    setProducts((prodRes.data as Product[]) ?? []);
+    setCategories((catRes.data as Category[]) ?? []);
+    setLoading(false);
+  }, [supabase]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.barcode ?? "").toLowerCase().includes(q)
+    );
+  }, [products, search]);
+
+  const catName = (id: string | null) =>
+    categories.find((c) => c.id === id)?.name ?? "-";
+
+  function openAdd() {
+    setEditing(null);
+    setModalOpen(true);
+  }
+
+  function openEdit(p: Product) {
+    setEditing(p);
+    setModalOpen(true);
+  }
+
+  async function handleDelete(p: Product) {
+    if (!window.confirm(`ลบสินค้า "${p.name}" ?\n(ประวัติการขายเดิมจะยังอยู่ครบ)`))
+      return;
+    await supabase.from("products").update({ is_active: false }).eq("id", p.id);
+    loadData();
+  }
+
+  return (
+    <div className="flex-1 p-4 md:p-6">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-bold md:text-2xl">จัดการสินค้า</h1>
+        <div className="flex gap-2">
+          <button className="btn-secondary" onClick={() => setCatModalOpen(true)}>
+            🏷️ หมวดหมู่
+          </button>
+          <button className="btn-primary" onClick={openAdd}>
+            + เพิ่มสินค้า
+          </button>
+        </div>
+      </div>
+
+      <input
+        className="input mb-4 max-w-md"
+        placeholder="ค้นหาชื่อสินค้า หรือบาร์โค้ด..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+
+      {loading ? (
+        <p className="py-16 text-center text-slate-400">กำลังโหลด...</p>
+      ) : filtered.length === 0 ? (
+        <div className="py-16 text-center text-slate-400">
+          <p className="mb-1 text-4xl">📦</p>
+          <p>{products.length === 0 ? "ยังไม่มีสินค้า — กด “+ เพิ่มสินค้า” เพื่อเริ่มต้น" : "ไม่พบสินค้าที่ค้นหา"}</p>
+        </div>
+      ) : (
+        <>
+          {/* ตารางสำหรับจอใหญ่ */}
+          <div className="card hidden overflow-x-auto md:block">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-slate-500">
+                  <th className="px-4 py-3 font-medium">สินค้า</th>
+                  <th className="px-4 py-3 font-medium">หมวดหมู่</th>
+                  <th className="px-4 py-3 text-right font-medium">ราคาขาย</th>
+                  <th className="px-4 py-3 text-right font-medium">ต้นทุน</th>
+                  <th className="px-4 py-3 text-right font-medium">กำไร/ชิ้น</th>
+                  <th className="px-4 py-3 text-right font-medium">คงเหลือ</th>
+                  <th className="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((p) => {
+                  const low = p.track_stock && p.stock <= p.low_stock_threshold;
+                  return (
+                    <tr
+                      key={p.id}
+                      className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
+                    >
+                      <td className="px-4 py-3">
+                        <p className="font-medium">{p.name}</p>
+                        {p.barcode && (
+                          <p className="text-xs text-slate-400">{p.barcode}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-slate-500">
+                        {catName(p.category_id)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold">
+                        {baht(p.price)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-slate-500">
+                        {baht(p.cost)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-green-600">
+                        {baht(p.price - p.cost)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {p.track_stock ? (
+                          <span
+                            className={`font-semibold ${
+                              p.stock <= 0
+                                ? "text-red-600"
+                                : low
+                                  ? "text-amber-600"
+                                  : ""
+                            }`}
+                          >
+                            {formatNumber(p.stock)}
+                            {low && " ⚠️"}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">ไม่นับ</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          className="mr-1 rounded-lg px-3 py-1.5 text-blue-600 hover:bg-blue-50"
+                          onClick={() => openEdit(p)}
+                        >
+                          แก้ไข
+                        </button>
+                        <button
+                          className="rounded-lg px-3 py-1.5 text-red-500 hover:bg-red-50"
+                          onClick={() => handleDelete(p)}
+                        >
+                          ลบ
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* การ์ดสำหรับมือถือ */}
+          <div className="space-y-3 md:hidden">
+            {filtered.map((p) => {
+              const low = p.track_stock && p.stock <= p.low_stock_threshold;
+              return (
+                <div key={p.id} className="card p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold">{p.name}</p>
+                      <p className="text-xs text-slate-400">
+                        {catName(p.category_id)}
+                        {p.barcode ? ` · ${p.barcode}` : ""}
+                      </p>
+                    </div>
+                    {p.track_stock && (
+                      <span
+                        className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          p.stock <= 0
+                            ? "bg-red-100 text-red-600"
+                            : low
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        เหลือ {formatNumber(p.stock)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-3 flex items-end justify-between">
+                    <div className="text-sm text-slate-500">
+                      <p>
+                        ขาย{" "}
+                        <span className="font-bold text-slate-900">
+                          {baht(p.price)}
+                        </span>{" "}
+                        · ทุน {baht(p.cost)}
+                      </p>
+                      <p className="text-green-600">
+                        กำไร {baht(p.price - p.cost)}/ชิ้น
+                      </p>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        className="rounded-lg bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-600"
+                        onClick={() => openEdit(p)}
+                      >
+                        แก้ไข
+                      </button>
+                      <button
+                        className="rounded-lg bg-red-50 px-3 py-1.5 text-sm font-medium text-red-500"
+                        onClick={() => handleDelete(p)}
+                      >
+                        ลบ
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {modalOpen && (
+        <ProductModal
+          product={editing}
+          categories={categories}
+          onClose={() => setModalOpen(false)}
+          onSaved={() => {
+            setModalOpen(false);
+            loadData();
+          }}
+        />
+      )}
+
+      {catModalOpen && (
+        <CategoryModal
+          categories={categories}
+          onClose={() => setCatModalOpen(false)}
+          onChanged={loadData}
+        />
+      )}
+    </div>
+  );
+}
+
+function ProductModal({
+  product,
+  categories,
+  onClose,
+  onSaved,
+}: {
+  product: Product | null;
+  categories: Category[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const [form, setForm] = useState<ProductForm>(
+    product
+      ? {
+          name: product.name,
+          barcode: product.barcode ?? "",
+          category_id: product.category_id ?? "",
+          price: String(product.price),
+          cost: String(product.cost),
+          stock: String(product.stock),
+          track_stock: product.track_stock,
+          low_stock_threshold: String(product.low_stock_threshold),
+          image_url: product.image_url ?? "",
+        }
+      : EMPTY_FORM
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const set = (patch: Partial<ProductForm>) =>
+    setForm((f) => ({ ...f, ...patch }));
+
+  const price = parseFloat(form.price) || 0;
+  const cost = parseFloat(form.cost) || 0;
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    const payload = {
+      name: form.name.trim(),
+      barcode: form.barcode.trim() || null,
+      category_id: form.category_id || null,
+      price,
+      cost,
+      stock: parseFloat(form.stock) || 0,
+      track_stock: form.track_stock,
+      low_stock_threshold: parseFloat(form.low_stock_threshold) || 0,
+      image_url: form.image_url.trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = product
+      ? await supabase.from("products").update(payload).eq("id", product.id)
+      : await supabase.from("products").insert(payload);
+    if (error) {
+      setError(`บันทึกไม่สำเร็จ: ${error.message}`);
+      setSaving(false);
+      return;
+    }
+    onSaved();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+      <form
+        onSubmit={save}
+        className="flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl"
+      >
+        <div className="flex items-center justify-between px-6 pt-5">
+          <h2 className="text-xl font-bold">
+            {product ? "แก้ไขสินค้า" : "เพิ่มสินค้า"}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-2 text-slate-400 hover:bg-slate-100"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
+          <Field label="ชื่อสินค้า *">
+            <input
+              className="input"
+              value={form.name}
+              onChange={(e) => set({ name: e.target.value })}
+              required
+              autoFocus
+            />
+          </Field>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="ราคาขาย (บาท) *">
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="any"
+                className="input"
+                value={form.price}
+                onChange={(e) => set({ price: e.target.value })}
+                required
+              />
+            </Field>
+            <Field label="ต้นทุน (บาท)">
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="any"
+                className="input"
+                value={form.cost}
+                onChange={(e) => set({ cost: e.target.value })}
+              />
+            </Field>
+          </div>
+
+          {price > 0 && (
+            <p className="rounded-xl bg-green-50 px-4 py-2.5 text-sm text-green-700">
+              กำไรต่อชิ้น: <b>{baht(price - cost)}</b>{" "}
+              {price > 0 && `(${(((price - cost) / price) * 100).toFixed(1)}%)`}
+            </p>
+          )}
+
+          <Field label="หมวดหมู่">
+            <select
+              className="input"
+              value={form.category_id}
+              onChange={(e) => set({ category_id: e.target.value })}
+            >
+              <option value="">— ไม่ระบุ —</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="บาร์โค้ด">
+            <input
+              className="input"
+              value={form.barcode}
+              onChange={(e) => set({ barcode: e.target.value })}
+              placeholder="สแกนหรือพิมพ์บาร์โค้ด"
+            />
+          </Field>
+
+          <label className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3">
+            <input
+              type="checkbox"
+              className="h-5 w-5 accent-blue-600"
+              checked={form.track_stock}
+              onChange={(e) => set({ track_stock: e.target.checked })}
+            />
+            <span className="text-sm font-medium">
+              นับสต๊อก (ตัดจำนวนอัตโนมัติเมื่อขาย)
+            </span>
+          </label>
+
+          {form.track_stock && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="จำนวนคงเหลือ">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  className="input"
+                  value={form.stock}
+                  onChange={(e) => set({ stock: e.target.value })}
+                />
+              </Field>
+              <Field label="แจ้งเตือนเมื่อต่ำกว่า">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="any"
+                  className="input"
+                  value={form.low_stock_threshold}
+                  onChange={(e) => set({ low_stock_threshold: e.target.value })}
+                />
+              </Field>
+            </div>
+          )}
+
+          <Field label="ลิงก์รูปภาพ (ถ้ามี)">
+            <input
+              type="url"
+              className="input"
+              value={form.image_url}
+              onChange={(e) => set({ image_url: e.target.value })}
+              placeholder="https://..."
+            />
+          </Field>
+
+          {error && (
+            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+              {error}
+            </p>
+          )}
+        </div>
+
+        <div className="flex gap-2 border-t border-slate-200 p-4 px-6">
+          <button type="button" className="btn-secondary flex-1" onClick={onClose}>
+            ยกเลิก
+          </button>
+          <button type="submit" className="btn-primary flex-1" disabled={saving}>
+            {saving ? "กำลังบันทึก..." : "บันทึก"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function CategoryModal({
+  categories,
+  onClose,
+  onChanged,
+}: {
+  categories: Category[];
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function addCategory(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSaving(true);
+    await supabase.from("categories").insert({
+      name: name.trim(),
+      position: categories.length + 1,
+    });
+    setName("");
+    setSaving(false);
+    onChanged();
+  }
+
+  async function removeCategory(c: Category) {
+    if (!window.confirm(`ลบหมวดหมู่ "${c.name}" ?\n(สินค้าในหมวดนี้จะกลายเป็น “ไม่ระบุ”)`))
+      return;
+    await supabase.from("categories").delete().eq("id", c.id);
+    onChanged();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+      <div className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl">
+        <div className="flex items-center justify-between px-6 pt-5">
+          <h2 className="text-xl font-bold">หมวดหมู่สินค้า</h2>
+          <button
+            onClick={onClose}
+            className="rounded-full p-2 text-slate-400 hover:bg-slate-100"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <form onSubmit={addCategory} className="mb-4 flex gap-2">
+            <input
+              className="input flex-1"
+              placeholder="ชื่อหมวดหมู่ใหม่..."
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={saving || !name.trim()}
+            >
+              เพิ่ม
+            </button>
+          </form>
+
+          {categories.length === 0 ? (
+            <p className="py-8 text-center text-sm text-slate-400">
+              ยังไม่มีหมวดหมู่
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {categories.map((c) => (
+                <li
+                  key={c.id}
+                  className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3"
+                >
+                  <span className="font-medium">{c.name}</span>
+                  <button
+                    className="text-sm text-red-500 hover:underline"
+                    onClick={() => removeCategory(c)}
+                  >
+                    ลบ
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="border-t border-slate-200 p-4 px-6">
+          <button className="btn-secondary w-full" onClick={onClose}>
+            ปิด
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-sm font-medium text-slate-700">
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}

@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap");
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  @apply bg-slate-100 text-slate-900 antialiased;
+}
+
+/* ปุ่ม/การ์ดกดง่ายบนจอสัมผัส */
+button {
+  touch-action: manipulation;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@layer components {
+  .btn-primary {
+    @apply rounded-xl bg-blue-600 px-4 py-2.5 font-semibold text-white transition active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100 hover:bg-blue-700;
+  }
+  .btn-secondary {
+    @apply rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-semibold text-slate-700 transition active:scale-[0.98] hover:bg-slate-50;
+  }
+  .btn-danger {
+    @apply rounded-xl bg-red-600 px-4 py-2.5 font-semibold text-white transition active:scale-[0.98] hover:bg-red-700;
+  }
+  .input {
+    @apply w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200;
+  }
+  .card {
+    @apply rounded-2xl border border-slate-200 bg-white shadow-sm;
+  }
+}
