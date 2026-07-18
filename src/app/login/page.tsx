@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -17,12 +17,30 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
+
+    const value = identifier.trim();
+    let email = value;
+
+    if (!value.includes("@")) {
+      // กรอกมาเป็นเบอร์โทร — ค้นหาอีเมลที่ผูกไว้ก่อน
+      const { data: resolvedEmail, error: lookupError } = await supabase.rpc(
+        "get_email_by_phone",
+        { p_phone: value }
+      );
+      if (lookupError || !resolvedEmail) {
+        setError("ไม่พบบัญชีที่ใช้เบอร์โทรนี้");
+        setLoading(false);
+        return;
+      }
+      email = resolvedEmail;
+    }
+
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
     if (error) {
-      setError("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+      setError("อีเมล/เบอร์โทร หรือรหัสผ่านไม่ถูกต้อง");
       setLoading(false);
       return;
     }
@@ -46,16 +64,16 @@ export default function LoginPage() {
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-neutral-700">
-              อีเมล
+              อีเมล หรือ เบอร์โทร
             </label>
             <input
-              type="email"
+              type="text"
               className="input"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com หรือ 0812345678"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
               required
-              autoComplete="email"
+              autoComplete="username"
             />
           </div>
           <div>
@@ -85,7 +103,7 @@ export default function LoginPage() {
         </form>
 
         <p className="mt-6 text-center text-xs text-neutral-400">
-          สร้างบัญชีผู้ใช้ได้ที่ Supabase Dashboard &gt; Authentication &gt; Users
+          พนักงานใหม่ให้เจ้าของร้านสร้างบัญชีให้ที่เมนู “พนักงาน”
         </p>
       </div>
     </main>

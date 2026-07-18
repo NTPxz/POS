@@ -163,6 +163,27 @@ create policy "owner updates roles" on public.profiles
   using (public.is_owner())
   with check (public.is_owner());
 
+-- กันเบอร์โทรซ้ำ (NULL ซ้ำกันได้ตามปกติของ unique index)
+create unique index if not exists profiles_phone_unique_idx
+  on public.profiles (phone) where phone is not null;
+
+-- ค้นหาอีเมลจากเบอร์โทร สำหรับหน้า login (เรียกได้ก่อนล็อกอิน)
+-- normalize เบอร์โทรทั้งสองฝั่งให้เหลือแต่ตัวเลข กันปัญหาเว้นวรรค/ขีด
+create or replace function public.get_email_by_phone(p_phone text)
+returns text
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select email from public.profiles
+  where regexp_replace(phone, '[^0-9]', '', 'g') = regexp_replace(p_phone, '[^0-9]', '', 'g')
+  limit 1;
+$$;
+
+revoke execute on function public.get_email_by_phone from public;
+grant execute on function public.get_email_by_phone to anon, authenticated;
+
 -- ============================================================
 -- Row Level Security: หมวดหมู่/สินค้า ทุกคนอ่านได้ (ต้องใช้ตอนขาย)
 -- แก้ไข/ลบได้เฉพาะ manager ขึ้นไป — บิลขาย/รายการขายเปิดให้พนักงานทุกคน

@@ -1,7 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, Info, Phone, RefreshCw, Users } from "lucide-react";
+import {
+  AlertCircle,
+  Info,
+  KeyRound,
+  Phone,
+  Plus,
+  RefreshCw,
+  Users,
+  X,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/format";
 import { Profile, Role, ROLE_LABELS } from "@/lib/types";
@@ -25,6 +34,8 @@ function StaffPageContent() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [resetTarget, setResetTarget] = useState<Profile | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -100,15 +111,21 @@ function StaffPageContent() {
     <div className="flex-1 p-4 md:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold md:text-2xl">จัดการพนักงาน</h1>
+        <button
+          className="btn-primary inline-flex items-center gap-2"
+          onClick={() => setAddModalOpen(true)}
+        >
+          <Plus className="h-4 w-4" strokeWidth={2.5} />
+          เพิ่มพนักงาน
+        </button>
       </div>
 
       <div className="card mb-4 flex items-start gap-3 p-4 text-sm text-neutral-600">
         <Info className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" strokeWidth={2} />
         <p>
-          เพิ่มพนักงานใหม่ได้ที่ Supabase Dashboard{" "}
-          <span className="text-neutral-400">→</span> Authentication{" "}
-          <span className="text-neutral-400">→</span> Users แล้วกลับมากำหนด
-          role ที่หน้านี้ (บัญชีใหม่จะได้สิทธิ์ “พนักงานขาย” เป็นค่าเริ่มต้น)
+          กด “เพิ่มพนักงาน” เพื่อสร้างบัญชีให้พนักงานได้เลยในนี้ — ตั้งเบอร์โทร
+          และรหัสผ่านให้เอง ไม่ต้องมีอีเมลก็สร้างได้ พนักงานใช้{" "}
+          <b>เบอร์โทร + รหัสผ่าน</b> ที่กำหนดไว้ล็อกอินได้ทันที
         </p>
       </div>
 
@@ -142,6 +159,7 @@ function StaffPageContent() {
                   <th className="px-4 py-3 font-medium">เบอร์โทร</th>
                   <th className="px-4 py-3 font-medium">เข้าร่วมเมื่อ</th>
                   <th className="px-4 py-3 font-medium">สิทธิ์การใช้งาน</th>
+                  <th className="px-4 py-3"></th>
                 </tr>
               </thead>
               <tbody>
@@ -172,6 +190,15 @@ function StaffPageContent() {
                         disabled={savingId === p.id}
                         onChange={(role) => changeRole(p, role)}
                       />
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-brand-600 hover:bg-brand-50"
+                        onClick={() => setResetTarget(p)}
+                      >
+                        <KeyRound className="h-3.5 w-3.5" strokeWidth={2} />
+                        เปลี่ยนรหัสผ่าน
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -205,11 +232,35 @@ function StaffPageContent() {
                     disabled={savingId === p.id}
                     onChange={(role) => changeRole(p, role)}
                   />
+                  <button
+                    className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-neutral-200 py-2 text-sm font-medium text-brand-600"
+                    onClick={() => setResetTarget(p)}
+                  >
+                    <KeyRound className="h-4 w-4" strokeWidth={2} />
+                    เปลี่ยนรหัสผ่าน
+                  </button>
                 </div>
               </div>
             ))}
           </div>
         </>
+      )}
+
+      {addModalOpen && (
+        <AddStaffModal
+          onClose={() => setAddModalOpen(false)}
+          onCreated={() => {
+            setAddModalOpen(false);
+            loadData();
+          }}
+        />
+      )}
+
+      {resetTarget && (
+        <ResetPasswordModal
+          staff={resetTarget}
+          onClose={() => setResetTarget(null)}
+        />
       )}
     </div>
   );
@@ -271,5 +322,258 @@ function RoleSelect({
         </option>
       ))}
     </select>
+  );
+}
+
+type AddStaffForm = {
+  fullName: string;
+  phone: string;
+  email: string;
+  password: string;
+  role: Role;
+};
+
+function AddStaffModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [form, setForm] = useState<AddStaffForm>({
+    fullName: "",
+    phone: "",
+    email: "",
+    password: "",
+    role: "staff",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const set = (patch: Partial<AddStaffForm>) =>
+    setForm((f) => ({ ...f, ...patch }));
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    const res = await fetch("/api/staff/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(body.error ?? "สร้างพนักงานไม่สำเร็จ");
+      setSaving(false);
+      return;
+    }
+    onCreated();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+      <form
+        onSubmit={save}
+        className="flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl"
+      >
+        <div className="flex items-center justify-between px-6 pt-5">
+          <h2 className="text-xl font-bold">เพิ่มพนักงาน</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-2 text-neutral-400 hover:bg-neutral-100"
+          >
+            <X className="h-5 w-5" strokeWidth={2} />
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
+          <Field label="ชื่อพนักงาน">
+            <input
+              className="input"
+              value={form.fullName}
+              onChange={(e) => set({ fullName: e.target.value })}
+              placeholder="ไม่บังคับ"
+              autoFocus
+            />
+          </Field>
+
+          <Field label="เบอร์โทร *">
+            <input
+              type="tel"
+              className="input"
+              value={form.phone}
+              onChange={(e) => set({ phone: e.target.value })}
+              placeholder="0812345678"
+              required
+            />
+          </Field>
+
+          <Field label="รหัสผ่าน * (อย่างน้อย 6 ตัวอักษร)">
+            <input
+              type="text"
+              className="input"
+              value={form.password}
+              onChange={(e) => set({ password: e.target.value })}
+              placeholder="ตั้งรหัสผ่านให้พนักงาน"
+              minLength={6}
+              required
+            />
+          </Field>
+
+          <Field label="อีเมล (ไม่บังคับ)">
+            <input
+              type="email"
+              className="input"
+              value={form.email}
+              onChange={(e) => set({ email: e.target.value })}
+              placeholder="เว้นว่างได้ถ้าใช้แค่เบอร์โทรล็อกอิน"
+            />
+          </Field>
+
+          <Field label="สิทธิ์การใช้งาน">
+            <select
+              className="input"
+              value={form.role}
+              onChange={(e) => set({ role: e.target.value as Role })}
+            >
+              {ROLE_ORDER.map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_LABELS[r]}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          {error && (
+            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+              {error}
+            </p>
+          )}
+        </div>
+
+        <div className="flex gap-2 border-t border-neutral-200 p-4 px-6">
+          <button type="button" className="btn-secondary flex-1" onClick={onClose}>
+            ยกเลิก
+          </button>
+          <button type="submit" className="btn-primary flex-1" disabled={saving}>
+            {saving ? "กำลังสร้าง..." : "สร้างพนักงาน"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ResetPasswordModal({
+  staff,
+  onClose,
+}: {
+  staff: Profile;
+  onClose: () => void;
+}) {
+  const [password, setPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    const res = await fetch("/api/staff/reset-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: staff.id, password }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(body.error ?? "เปลี่ยนรหัสผ่านไม่สำเร็จ");
+      setSaving(false);
+      return;
+    }
+    setDone(true);
+    setSaving(false);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+      <div className="flex max-h-[92dvh] w-full max-w-sm flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl">
+        <div className="flex items-center justify-between px-6 pt-5">
+          <h2 className="text-xl font-bold">เปลี่ยนรหัสผ่าน</h2>
+          <button
+            onClick={onClose}
+            className="rounded-full p-2 text-neutral-400 hover:bg-neutral-100"
+          >
+            <X className="h-5 w-5" strokeWidth={2} />
+          </button>
+        </div>
+
+        {done ? (
+          <div className="px-6 py-6">
+            <p className="rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">
+              เปลี่ยนรหัสผ่านให้ {staff.email ?? staff.phone} เรียบร้อยแล้ว
+            </p>
+            <button className="btn-primary mt-4 w-full" onClick={onClose}>
+              ปิด
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={save} className="flex flex-col">
+            <div className="space-y-4 px-6 py-4">
+              <p className="text-sm text-neutral-500">
+                ตั้งรหัสผ่านใหม่ให้ {staff.email ?? staff.phone ?? "พนักงานคนนี้"}
+              </p>
+              <Field label="รหัสผ่านใหม่ * (อย่างน้อย 6 ตัวอักษร)">
+                <input
+                  type="text"
+                  className="input"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  minLength={6}
+                  required
+                  autoFocus
+                />
+              </Field>
+              {error && (
+                <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+                  {error}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2 border-t border-neutral-200 p-4 px-6">
+              <button
+                type="button"
+                className="btn-secondary flex-1"
+                onClick={onClose}
+              >
+                ยกเลิก
+              </button>
+              <button type="submit" className="btn-primary flex-1" disabled={saving}>
+                {saving ? "กำลังบันทึก..." : "บันทึก"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-sm font-medium text-neutral-700">
+        {label}
+      </label>
+      {children}
+    </div>
   );
 }
