@@ -69,7 +69,102 @@ create index if not exists idx_sale_items_sale on public.sale_items (sale_id);
 create index if not exists idx_sale_items_product on public.sale_items (product_id);
 
 -- ============================================================
--- Row Level Security: ทุกคนที่ล็อกอินแล้ว (พนักงานร้าน) ใช้ข้อมูลร่วมกัน
+-- ระบบ role พนักงาน: owner (เจ้าของร้าน) > manager (ผู้จัดการ) > staff (พนักงานขาย)
+-- ============================================================
+create table if not exists public.profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  email text,
+  full_name text,
+  role text not null default 'staff' check (role in ('owner', 'manager', 'staff')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- สมัครคนแรกกลายเป็น owner อัตโนมัติ คนถัดไปเป็น staff (owner ปรับ role ให้ทีหลังได้)
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email, role)
+  values (
+    new.id,
+    new.email,
+    case when exists (select 1 from public.profiles) then 'staff' else 'owner' end
+  );
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+-- ผู้ใช้ที่มีอยู่ก่อนระบบ role จะถูกตั้งเป็น owner
+insert into public.profiles (id, email, role)
+select id, email, 'owner' from auth.users
+on conflict (id) do nothing;
+
+-- ฟังก์ชันช่วยสำหรับ RLS (security definer กันไม่ให้ policy ของ profiles อ้างถึงตัวเองแล้ววนลูป)
+create or replace function public.my_role()
+returns text
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select role from public.profiles where id = auth.uid();
+$$;
+
+create or replace function public.is_manager_or_above()
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select coalesce(public.my_role() in ('owner', 'manager'), false);
+$$;
+
+create or replace function public.is_owner()
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select coalesce(public.my_role() = 'owner', false);
+$$;
+
+-- จำกัดสิทธิ์เรียกฟังก์ชัน helper: ห้าม anon (ผู้ไม่ล็อกอิน) เรียกได้
+revoke execute on function public.my_role from public, anon;
+revoke execute on function public.is_manager_or_above from public, anon;
+revoke execute on function public.is_owner from public, anon;
+grant execute on function public.my_role to authenticated;
+grant execute on function public.is_manager_or_above to authenticated;
+grant execute on function public.is_owner to authenticated;
+-- handle_new_user ใช้เฉพาะภายใน trigger เท่านั้น ไม่ควรเรียกตรงได้เลย
+revoke execute on function public.handle_new_user from public, anon, authenticated;
+
+alter table public.profiles enable row level security;
+
+drop policy if exists "read own or manager reads all" on public.profiles;
+create policy "read own or manager reads all" on public.profiles
+  for select to authenticated
+  using (id = auth.uid() or public.is_manager_or_above());
+
+drop policy if exists "owner updates roles" on public.profiles;
+create policy "owner updates roles" on public.profiles
+  for update to authenticated
+  using (public.is_owner())
+  with check (public.is_owner());
+
+-- ============================================================
+-- Row Level Security: หมวดหมู่/สินค้า ทุกคนอ่านได้ (ต้องใช้ตอนขาย)
+-- แก้ไข/ลบได้เฉพาะ manager ขึ้นไป — บิลขาย/รายการขายเปิดให้พนักงานทุกคน
 -- ============================================================
 alter table public.categories enable row level security;
 alter table public.products enable row level security;
@@ -77,12 +172,24 @@ alter table public.sales enable row level security;
 alter table public.sale_items enable row level security;
 
 drop policy if exists "authenticated full access" on public.categories;
-create policy "authenticated full access" on public.categories
-  for all to authenticated using (true) with check (true);
+create policy "select categories" on public.categories
+  for select to authenticated using (true);
+create policy "insert categories" on public.categories
+  for insert to authenticated with check (public.is_manager_or_above());
+create policy "update categories" on public.categories
+  for update to authenticated using (public.is_manager_or_above()) with check (public.is_manager_or_above());
+create policy "delete categories" on public.categories
+  for delete to authenticated using (public.is_manager_or_above());
 
 drop policy if exists "authenticated full access" on public.products;
-create policy "authenticated full access" on public.products
-  for all to authenticated using (true) with check (true);
+create policy "select products" on public.products
+  for select to authenticated using (true);
+create policy "insert products" on public.products
+  for insert to authenticated with check (public.is_manager_or_above());
+create policy "update products" on public.products
+  for update to authenticated using (public.is_manager_or_above()) with check (public.is_manager_or_above());
+create policy "delete products" on public.products
+  for delete to authenticated using (public.is_manager_or_above());
 
 drop policy if exists "authenticated full access" on public.sales;
 create policy "authenticated full access" on public.sales
@@ -170,7 +277,7 @@ end;
 $$;
 
 -- ============================================================
--- ฟังก์ชันยกเลิกบิล: เปลี่ยนสถานะเป็น voided และคืนสต๊อก
+-- ฟังก์ชันยกเลิกบิล: เปลี่ยนสถานะเป็น voided และคืนสต๊อก (manager ขึ้นไปเท่านั้น)
 -- ============================================================
 create or replace function public.void_sale(p_sale_id uuid)
 returns void
@@ -183,6 +290,9 @@ declare
 begin
   if auth.uid() is null then
     raise exception 'ต้องล็อกอินก่อน';
+  end if;
+  if not public.is_manager_or_above() then
+    raise exception 'ไม่มีสิทธิ์ยกเลิกบิล (ต้องเป็นผู้จัดการขึ้นไป)';
   end if;
 
   update sales set status = 'voided', voided_at = now()
@@ -208,7 +318,7 @@ grant execute on function public.void_sale to authenticated;
 -- ============================================================
 -- รายจ่าย / ต้นทุน (ต้นทุนเริ่มต้น, วัตถุดิบ, ค่าเช่า, เงินเดือน ฯลฯ)
 -- แยกจากต้นทุนสินค้า (products.cost) ซึ่งเป็นต้นทุนต่อชิ้นที่ขาย
--- ใช้คำนวณ "กำไรสุทธิ" ใน Dashboard ร่วมกับกำไรขั้นต้นจากยอดขาย
+-- เข้าถึงได้เฉพาะ manager ขึ้นไป (พนักงานขายเข้าไม่ได้เลย)
 -- ============================================================
 
 -- หมวดหมู่รายจ่าย
@@ -238,12 +348,14 @@ alter table public.expense_categories enable row level security;
 alter table public.expenses enable row level security;
 
 drop policy if exists "authenticated full access" on public.expense_categories;
-create policy "authenticated full access" on public.expense_categories
-  for all to authenticated using (true) with check (true);
+drop policy if exists "manager full access" on public.expense_categories;
+create policy "manager full access" on public.expense_categories
+  for all to authenticated using (public.is_manager_or_above()) with check (public.is_manager_or_above());
 
 drop policy if exists "authenticated full access" on public.expenses;
-create policy "authenticated full access" on public.expenses
-  for all to authenticated using (true) with check (true);
+drop policy if exists "manager full access" on public.expenses;
+create policy "manager full access" on public.expenses
+  for all to authenticated using (public.is_manager_or_above()) with check (public.is_manager_or_above());
 
 insert into public.expense_categories (name, position) values
   ('ต้นทุนเริ่มต้น/เงินลงทุน', 1),
@@ -254,6 +366,50 @@ insert into public.expense_categories (name, position) values
   ('ค่าขนส่ง', 6),
   ('การตลาด/โฆษณา', 7),
   ('อื่นๆ', 8)
+on conflict (name) do nothing;
+
+-- ============================================================
+-- รายได้อื่นๆ นอกเหนือจากยอดขาย POS (ซึ่งนับอัตโนมัติอยู่แล้ว)
+-- เข้าถึงได้เฉพาะ manager ขึ้นไปเช่นเดียวกับรายจ่าย
+-- ============================================================
+create table if not exists public.income_categories (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  position int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.income (
+  id uuid primary key default gen_random_uuid(),
+  category_id uuid references public.income_categories (id) on delete set null,
+  title text not null,
+  amount numeric(12, 2) not null default 0,
+  income_date date not null default current_date,
+  note text,
+  user_id uuid references auth.users (id),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_income_date on public.income (income_date);
+create index if not exists idx_income_category on public.income (category_id);
+
+alter table public.income_categories enable row level security;
+alter table public.income enable row level security;
+
+drop policy if exists "manager full access" on public.income_categories;
+create policy "manager full access" on public.income_categories
+  for all to authenticated using (public.is_manager_or_above()) with check (public.is_manager_or_above());
+
+drop policy if exists "manager full access" on public.income;
+create policy "manager full access" on public.income
+  for all to authenticated using (public.is_manager_or_above()) with check (public.is_manager_or_above());
+
+insert into public.income_categories (name, position) values
+  ('รายได้จากการขายอื่นๆ', 1),
+  ('เงินลงทุนเพิ่ม', 2),
+  ('รายได้ค่าบริการ', 3),
+  ('เงินคืน/ส่วนลดจากซัพพลายเออร์', 4),
+  ('รายได้อื่นๆ', 5)
 on conflict (name) do nothing;
 
 -- ============================================================

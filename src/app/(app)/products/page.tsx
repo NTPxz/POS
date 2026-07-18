@@ -13,6 +13,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { baht, formatNumber } from "@/lib/format";
 import { Category, Product } from "@/lib/types";
+import RequireRole from "@/components/RequireRole";
 
 type ProductForm = {
   name: string;
@@ -39,6 +40,14 @@ const EMPTY_FORM: ProductForm = {
 };
 
 export default function ProductsPage() {
+  return (
+    <RequireRole min="manager">
+      <ProductsPageContent />
+    </RequireRole>
+  );
+}
+
+function ProductsPageContent() {
   const supabase = useMemo(() => createClient(), []);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);

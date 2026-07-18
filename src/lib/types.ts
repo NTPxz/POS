@@ -86,3 +86,49 @@ export type Expense = {
 export type ExpenseWithCategory = Expense & {
   expense_categories: { name: string } | null;
 };
+
+export type IncomeCategory = {
+  id: string;
+  name: string;
+  position: number;
+  created_at: string;
+};
+
+export type Income = {
+  id: string;
+  category_id: string | null;
+  title: string;
+  amount: number;
+  income_date: string;
+  note: string | null;
+  user_id: string | null;
+  created_at: string;
+};
+
+export type IncomeWithCategory = Income & {
+  income_categories: { name: string } | null;
+};
+
+export type Role = "owner" | "manager" | "staff";
+
+export const ROLE_LABELS: Record<Role, string> = {
+  owner: "เจ้าของร้าน",
+  manager: "ผู้จัดการ",
+  staff: "พนักงานขาย",
+};
+
+const ROLE_RANK: Record<Role, number> = { staff: 0, manager: 1, owner: 2 };
+
+/** current มีสิทธิ์เท่ากับหรือสูงกว่า min หรือไม่ */
+export function hasRole(current: Role, min: Role): boolean {
+  return ROLE_RANK[current] >= ROLE_RANK[min];
+}
+
+export type Profile = {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+  role: Role;
+  created_at: string;
+  updated_at: string;
+};

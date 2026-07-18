@@ -11,8 +11,17 @@ import {
   toDateInput,
 } from "@/lib/format";
 import { PAYMENT_LABELS, SaleWithItems } from "@/lib/types";
+import RequireRole from "@/components/RequireRole";
 
 export default function SalesPage() {
+  return (
+    <RequireRole min="manager">
+      <SalesPageContent />
+    </RequireRole>
+  );
+}
+
+function SalesPageContent() {
   const supabase = useMemo(() => createClient(), []);
   const today = toDateInput(new Date());
   const [from, setFrom] = useState(today);

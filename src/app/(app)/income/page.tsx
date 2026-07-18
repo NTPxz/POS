@@ -1,10 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, Plus, RefreshCw, Tag, Wallet, X } from "lucide-react";
+import {
+  AlertCircle,
+  Plus,
+  RefreshCw,
+  Tag,
+  TrendingUp,
+  X,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { baht, formatDate, formatNumber, toDateInput } from "@/lib/format";
-import { Expense, ExpenseCategory, ExpenseWithCategory } from "@/lib/types";
+import { Income, IncomeCategory, IncomeWithCategory } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
 
 function startOfMonthInput(): string {
@@ -12,25 +19,25 @@ function startOfMonthInput(): string {
   return toDateInput(new Date(now.getFullYear(), now.getMonth(), 1));
 }
 
-export default function ExpensesPage() {
+export default function IncomePage() {
   return (
     <RequireRole min="manager">
-      <ExpensesPageContent />
+      <IncomePageContent />
     </RequireRole>
   );
 }
 
-function ExpensesPageContent() {
+function IncomePageContent() {
   const supabase = useMemo(() => createClient(), []);
   const today = toDateInput(new Date());
   const [from, setFrom] = useState(startOfMonthInput());
   const [to, setTo] = useState(today);
-  const [expenses, setExpenses] = useState<ExpenseWithCategory[]>([]);
-  const [categories, setCategories] = useState<ExpenseCategory[]>([]);
+  const [income, setIncome] = useState<IncomeWithCategory[]>([]);
+  const [categories, setCategories] = useState<IncomeCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<ExpenseWithCategory | null>(null);
+  const [editing, setEditing] = useState<IncomeWithCategory | null>(null);
   const [catModalOpen, setCatModalOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
@@ -39,20 +46,20 @@ function ExpensesPageContent() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [expRes, catRes] = await Promise.all([
+      const [incRes, catRes] = await Promise.all([
         supabase
-          .from("expenses")
-          .select("*, expense_categories(name)")
-          .gte("expense_date", from)
-          .lte("expense_date", to)
-          .order("expense_date", { ascending: false })
+          .from("income")
+          .select("*, income_categories(name)")
+          .gte("income_date", from)
+          .lte("income_date", to)
+          .order("income_date", { ascending: false })
           .order("created_at", { ascending: false }),
-        supabase.from("expense_categories").select("*").order("position"),
+        supabase.from("income_categories").select("*").order("position"),
       ]);
-      if (expRes.error) throw expRes.error;
+      if (incRes.error) throw incRes.error;
       if (catRes.error) throw catRes.error;
-      setExpenses((expRes.data as ExpenseWithCategory[]) ?? []);
-      setCategories((catRes.data as ExpenseCategory[]) ?? []);
+      setIncome((incRes.data as IncomeWithCategory[]) ?? []);
+      setCategories((catRes.data as IncomeCategory[]) ?? []);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ");
     } finally {
@@ -64,50 +71,50 @@ function ExpensesPageContent() {
     loadData();
   }, [loadData]);
 
-  const filteredExpenses = useMemo(() => {
+  const filteredIncome = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return expenses.filter((e) => {
-      if (categoryId && e.category_id !== categoryId) return false;
+    return income.filter((i) => {
+      if (categoryId && i.category_id !== categoryId) return false;
       if (!q) return true;
       return (
-        e.title.toLowerCase().includes(q) ||
-        (e.note ?? "").toLowerCase().includes(q)
+        i.title.toLowerCase().includes(q) ||
+        (i.note ?? "").toLowerCase().includes(q)
       );
     });
-  }, [expenses, search, categoryId]);
+  }, [income, search, categoryId]);
 
-  const total = filteredExpenses.reduce((s, e) => s + Number(e.amount), 0);
+  const total = filteredIncome.reduce((s, i) => s + Number(i.amount), 0);
 
   const byCategory = useMemo(() => {
     const map = new Map<string, number>();
-    for (const e of filteredExpenses) {
-      const name = e.expense_categories?.name ?? "ไม่ระบุหมวดหมู่";
-      map.set(name, (map.get(name) ?? 0) + Number(e.amount));
+    for (const i of filteredIncome) {
+      const name = i.income_categories?.name ?? "ไม่ระบุหมวดหมู่";
+      map.set(name, (map.get(name) ?? 0) + Number(i.amount));
     }
     return [...map.entries()].sort((a, b) => b[1] - a[1]);
-  }, [filteredExpenses]);
+  }, [filteredIncome]);
 
   function openAdd() {
     setEditing(null);
     setModalOpen(true);
   }
 
-  function openEdit(e: ExpenseWithCategory) {
-    setEditing(e);
+  function openEdit(i: IncomeWithCategory) {
+    setEditing(i);
     setModalOpen(true);
   }
 
-  async function handleDelete(e: Expense) {
-    if (!window.confirm(`ลบรายจ่าย "${e.title}" ยอด ${baht(Number(e.amount))} ?`))
+  async function handleDelete(i: Income) {
+    if (!window.confirm(`ลบรายได้ "${i.title}" ยอด ${baht(Number(i.amount))} ?`))
       return;
-    await supabase.from("expenses").delete().eq("id", e.id);
+    await supabase.from("income").delete().eq("id", i.id);
     loadData();
   }
 
   return (
     <div className="flex-1 p-4 md:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-bold md:text-2xl">รายจ่าย / ต้นทุน</h1>
+        <h1 className="text-xl font-bold md:text-2xl">รายได้</h1>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 text-sm">
             <input
@@ -138,10 +145,15 @@ function ExpensesPageContent() {
             onClick={openAdd}
           >
             <Plus className="h-4 w-4" strokeWidth={2.5} />
-            บันทึกรายจ่าย
+            บันทึกรายได้
           </button>
         </div>
       </div>
+
+      <p className="mb-4 text-sm text-neutral-500">
+        สำหรับรายได้อื่นนอกเหนือจากยอดขายหน้าร้าน (ซึ่งระบบนับให้อัตโนมัติแล้วในหน้า
+        “ภาพรวม”) เช่น เงินลงทุนเพิ่ม หรือรายได้ค่าบริการ
+      </p>
 
       {/* ค้นหาและกรองตามหมวดหมู่ */}
       <div className="mb-4 space-y-3">
@@ -173,12 +185,12 @@ function ExpensesPageContent() {
         <div className="card p-4">
           <p className="text-xs text-neutral-500 md:text-sm">จำนวนรายการ</p>
           <p className="text-lg font-bold md:text-2xl">
-            {formatNumber(filteredExpenses.length)}
+            {formatNumber(filteredIncome.length)}
           </p>
         </div>
         <div className="card p-4">
-          <p className="text-xs text-neutral-500 md:text-sm">รายจ่ายรวม</p>
-          <p className="text-lg font-bold text-red-600 md:text-2xl">
+          <p className="text-xs text-neutral-500 md:text-sm">รายได้รวม</p>
+          <p className="text-lg font-bold text-green-600 md:text-2xl">
             {baht(total)}
           </p>
         </div>
@@ -213,13 +225,13 @@ function ExpensesPageContent() {
             ลองอีกครั้ง
           </button>
         </div>
-      ) : filteredExpenses.length === 0 ? (
+      ) : filteredIncome.length === 0 ? (
         <div className="py-16 text-center text-neutral-400">
-          <Wallet className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
+          <TrendingUp className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
           <p>
-            {expenses.length === 0
-              ? "ไม่มีรายจ่ายในช่วงวันที่เลือก"
-              : "ไม่พบรายจ่ายที่ตรงกับตัวกรอง"}
+            {income.length === 0
+              ? "ไม่มีรายได้ในช่วงวันที่เลือก"
+              : "ไม่พบรายได้ที่ตรงกับตัวกรอง"}
           </p>
         </div>
       ) : (
@@ -237,36 +249,36 @@ function ExpensesPageContent() {
                 </tr>
               </thead>
               <tbody>
-                {filteredExpenses.map((e) => (
+                {filteredIncome.map((i) => (
                   <tr
-                    key={e.id}
+                    key={i.id}
                     className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
                   >
                     <td className="px-4 py-3 text-neutral-500">
-                      {formatDate(e.expense_date)}
+                      {formatDate(i.income_date)}
                     </td>
                     <td className="px-4 py-3">
-                      <p className="font-medium">{e.title}</p>
-                      {e.note && (
-                        <p className="text-xs text-neutral-400">{e.note}</p>
+                      <p className="font-medium">{i.title}</p>
+                      {i.note && (
+                        <p className="text-xs text-neutral-400">{i.note}</p>
                       )}
                     </td>
                     <td className="px-4 py-3 text-neutral-500">
-                      {e.expense_categories?.name ?? "ไม่ระบุหมวดหมู่"}
+                      {i.income_categories?.name ?? "ไม่ระบุหมวดหมู่"}
                     </td>
-                    <td className="px-4 py-3 text-right font-semibold text-red-600">
-                      {baht(Number(e.amount))}
+                    <td className="px-4 py-3 text-right font-semibold text-green-600">
+                      {baht(Number(i.amount))}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button
                         className="mr-1 rounded-lg px-3 py-1.5 text-brand-600 hover:bg-brand-50"
-                        onClick={() => openEdit(e)}
+                        onClick={() => openEdit(i)}
                       >
                         แก้ไข
                       </button>
                       <button
                         className="rounded-lg px-3 py-1.5 text-red-500 hover:bg-red-50"
-                        onClick={() => handleDelete(e)}
+                        onClick={() => handleDelete(i)}
                       >
                         ลบ
                       </button>
@@ -279,33 +291,33 @@ function ExpensesPageContent() {
 
           {/* การ์ดสำหรับมือถือ */}
           <div className="space-y-3 md:hidden">
-            {filteredExpenses.map((e) => (
-              <div key={e.id} className="card p-4">
+            {filteredIncome.map((i) => (
+              <div key={i.id} className="card p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-semibold">{e.title}</p>
+                    <p className="font-semibold">{i.title}</p>
                     <p className="text-xs text-neutral-400">
-                      {formatDate(e.expense_date)} ·{" "}
-                      {e.expense_categories?.name ?? "ไม่ระบุหมวดหมู่"}
+                      {formatDate(i.income_date)} ·{" "}
+                      {i.income_categories?.name ?? "ไม่ระบุหมวดหมู่"}
                     </p>
-                    {e.note && (
-                      <p className="mt-1 text-xs text-neutral-400">{e.note}</p>
+                    {i.note && (
+                      <p className="mt-1 text-xs text-neutral-400">{i.note}</p>
                     )}
                   </div>
-                  <span className="shrink-0 font-bold text-red-600">
-                    {baht(Number(e.amount))}
+                  <span className="shrink-0 font-bold text-green-600">
+                    {baht(Number(i.amount))}
                   </span>
                 </div>
                 <div className="mt-3 flex justify-end gap-1">
                   <button
                     className="rounded-lg bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-600"
-                    onClick={() => openEdit(e)}
+                    onClick={() => openEdit(i)}
                   >
                     แก้ไข
                   </button>
                   <button
                     className="rounded-lg bg-red-50 px-3 py-1.5 text-sm font-medium text-red-500"
-                    onClick={() => handleDelete(e)}
+                    onClick={() => handleDelete(i)}
                   >
                     ลบ
                   </button>
@@ -317,8 +329,8 @@ function ExpensesPageContent() {
       )}
 
       {modalOpen && (
-        <ExpenseModal
-          expense={editing}
+        <IncomeModal
+          income={editing}
           categories={categories}
           onClose={() => setModalOpen(false)}
           onSaved={() => {
@@ -329,7 +341,7 @@ function ExpensesPageContent() {
       )}
 
       {catModalOpen && (
-        <ExpenseCategoryModal
+        <IncomeCategoryModal
           categories={categories}
           onClose={() => setCatModalOpen(false)}
           onChanged={loadData}
@@ -339,47 +351,47 @@ function ExpensesPageContent() {
   );
 }
 
-type ExpenseForm = {
+type IncomeForm = {
   title: string;
   category_id: string;
   amount: string;
-  expense_date: string;
+  income_date: string;
   note: string;
 };
 
-function ExpenseModal({
-  expense,
+function IncomeModal({
+  income,
   categories,
   onClose,
   onSaved,
 }: {
-  expense: ExpenseWithCategory | null;
-  categories: ExpenseCategory[];
+  income: IncomeWithCategory | null;
+  categories: IncomeCategory[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
-  const [form, setForm] = useState<ExpenseForm>(
-    expense
+  const [form, setForm] = useState<IncomeForm>(
+    income
       ? {
-          title: expense.title,
-          category_id: expense.category_id ?? "",
-          amount: String(expense.amount),
-          expense_date: expense.expense_date,
-          note: expense.note ?? "",
+          title: income.title,
+          category_id: income.category_id ?? "",
+          amount: String(income.amount),
+          income_date: income.income_date,
+          note: income.note ?? "",
         }
       : {
           title: "",
           category_id: "",
           amount: "",
-          expense_date: toDateInput(new Date()),
+          income_date: toDateInput(new Date()),
           note: "",
         }
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const set = (patch: Partial<ExpenseForm>) =>
+  const set = (patch: Partial<IncomeForm>) =>
     setForm((f) => ({ ...f, ...patch }));
 
   async function save(e: React.FormEvent) {
@@ -390,12 +402,12 @@ function ExpenseModal({
       title: form.title.trim(),
       category_id: form.category_id || null,
       amount: parseFloat(form.amount) || 0,
-      expense_date: form.expense_date,
+      income_date: form.income_date,
       note: form.note.trim() || null,
     };
-    const { error } = expense
-      ? await supabase.from("expenses").update(payload).eq("id", expense.id)
-      : await supabase.from("expenses").insert(payload);
+    const { error } = income
+      ? await supabase.from("income").update(payload).eq("id", income.id)
+      : await supabase.from("income").insert(payload);
     if (error) {
       setError(`บันทึกไม่สำเร็จ: ${error.message}`);
       setSaving(false);
@@ -412,7 +424,7 @@ function ExpenseModal({
       >
         <div className="flex items-center justify-between px-6 pt-5">
           <h2 className="text-xl font-bold">
-            {expense ? "แก้ไขรายจ่าย" : "บันทึกรายจ่าย"}
+            {income ? "แก้ไขรายได้" : "บันทึกรายได้"}
           </h2>
           <button
             type="button"
@@ -429,7 +441,7 @@ function ExpenseModal({
               className="input"
               value={form.title}
               onChange={(e) => set({ title: e.target.value })}
-              placeholder="เช่น ซื้อวัตถุดิบ, ค่าเช่าร้านเดือนนี้"
+              placeholder="เช่น เงินลงทุนเพิ่ม, ค่าบริการพิเศษ"
               required
               autoFocus
             />
@@ -452,8 +464,8 @@ function ExpenseModal({
               <input
                 type="date"
                 className="input"
-                value={form.expense_date}
-                onChange={(e) => set({ expense_date: e.target.value })}
+                value={form.income_date}
+                onChange={(e) => set({ income_date: e.target.value })}
                 required
               />
             </Field>
@@ -503,12 +515,12 @@ function ExpenseModal({
   );
 }
 
-function ExpenseCategoryModal({
+function IncomeCategoryModal({
   categories,
   onClose,
   onChanged,
 }: {
-  categories: ExpenseCategory[];
+  categories: IncomeCategory[];
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -520,7 +532,7 @@ function ExpenseCategoryModal({
     e.preventDefault();
     if (!name.trim()) return;
     setSaving(true);
-    await supabase.from("expense_categories").insert({
+    await supabase.from("income_categories").insert({
       name: name.trim(),
       position: categories.length + 1,
     });
@@ -529,14 +541,14 @@ function ExpenseCategoryModal({
     onChanged();
   }
 
-  async function removeCategory(c: ExpenseCategory) {
+  async function removeCategory(c: IncomeCategory) {
     if (
       !window.confirm(
-        `ลบหมวดหมู่ "${c.name}" ?\n(รายจ่ายในหมวดนี้จะกลายเป็น “ไม่ระบุหมวดหมู่”)`
+        `ลบหมวดหมู่ "${c.name}" ?\n(รายได้ในหมวดนี้จะกลายเป็น “ไม่ระบุหมวดหมู่”)`
       )
     )
       return;
-    await supabase.from("expense_categories").delete().eq("id", c.id);
+    await supabase.from("income_categories").delete().eq("id", c.id);
     onChanged();
   }
 
@@ -544,7 +556,7 @@ function ExpenseCategoryModal({
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
       <div className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl">
         <div className="flex items-center justify-between px-6 pt-5">
-          <h2 className="text-xl font-bold">หมวดหมู่รายจ่าย</h2>
+          <h2 className="text-xl font-bold">หมวดหมู่รายได้</h2>
           <button
             onClick={onClose}
             className="rounded-full p-2 text-neutral-400 hover:bg-neutral-100"

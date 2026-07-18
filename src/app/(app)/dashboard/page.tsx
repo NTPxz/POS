@@ -13,11 +13,13 @@ import { createClient } from "@/lib/supabase/client";
 import { baht, formatNumber, daysAgo, toDateInput } from "@/lib/format";
 import {
   ExpenseWithCategory,
+  IncomeWithCategory,
   PAYMENT_LABELS,
   PaymentMethod,
   Product,
   SaleWithItems,
 } from "@/lib/types";
+import RequireRole from "@/components/RequireRole";
 
 const PAYMENT_ICONS: Record<PaymentMethod, typeof Banknote> = {
   cash: Banknote,
@@ -49,10 +51,19 @@ function periodStart(p: Period): Date {
 }
 
 export default function DashboardPage() {
+  return (
+    <RequireRole min="manager">
+      <DashboardPageContent />
+    </RequireRole>
+  );
+}
+
+function DashboardPageContent() {
   const supabase = useMemo(() => createClient(), []);
   const [period, setPeriod] = useState<Period>("today");
   const [sales, setSales] = useState<SaleWithItems[]>([]);
   const [expenses, setExpenses] = useState<ExpenseWithCategory[]>([]);
+  const [income, setIncome] = useState<IncomeWithCategory[]>([]);
   const [lowStock, setLowStock] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -65,7 +76,7 @@ export default function DashboardPage() {
       start.setHours(0, 0, 0, 0);
       const fromISO = start.toISOString();
       const fromDate = toDateInput(start);
-      const [salesRes, expensesRes, lowRes] = await Promise.all([
+      const [salesRes, expensesRes, incomeRes, lowRes] = await Promise.all([
         supabase
           .from("sales")
           .select("*, sale_items(*)")
@@ -78,6 +89,11 @@ export default function DashboardPage() {
           .gte("expense_date", fromDate)
           .order("expense_date"),
         supabase
+          .from("income")
+          .select("*, income_categories(name)")
+          .gte("income_date", fromDate)
+          .order("income_date"),
+        supabase
           .from("products")
           .select("*")
           .eq("is_active", true)
@@ -86,9 +102,11 @@ export default function DashboardPage() {
       ]);
       if (salesRes.error) throw salesRes.error;
       if (expensesRes.error) throw expensesRes.error;
+      if (incomeRes.error) throw incomeRes.error;
       if (lowRes.error) throw lowRes.error;
       setSales((salesRes.data as SaleWithItems[]) ?? []);
       setExpenses((expensesRes.data as ExpenseWithCategory[]) ?? []);
+      setIncome((incomeRes.data as IncomeWithCategory[]) ?? []);
       const products = (lowRes.data as Product[]) ?? [];
       setLowStock(products.filter((p) => p.stock <= p.low_stock_threshold));
     } catch (err) {
@@ -106,7 +124,8 @@ export default function DashboardPage() {
   const cost = sales.reduce((s, x) => s + Number(x.cost_total), 0);
   const grossProfit = revenue - cost;
   const expenseTotal = expenses.reduce((s, e) => s + Number(e.amount), 0);
-  const netProfit = grossProfit - expenseTotal;
+  const incomeTotal = income.reduce((s, i) => s + Number(i.amount), 0);
+  const netProfit = grossProfit + incomeTotal - expenseTotal;
   const billCount = sales.length;
   const avgPerBill = billCount > 0 ? revenue / billCount : 0;
 
@@ -206,13 +225,18 @@ export default function DashboardPage() {
       ) : (
         <div className="space-y-4">
           {/* ตัวเลขสรุป */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-7">
             <StatCard label="ยอดขาย" value={baht(revenue)} accent="text-brand-600" />
             <StatCard label="ต้นทุนสินค้า" value={baht(cost)} accent="text-neutral-700" />
             <StatCard
               label="กำไรขั้นต้น"
               value={baht(grossProfit)}
               accent="text-sand-700"
+            />
+            <StatCard
+              label="รายได้อื่นๆ"
+              value={baht(incomeTotal)}
+              accent="text-green-600"
             />
             <StatCard
               label="รายจ่ายอื่นๆ"

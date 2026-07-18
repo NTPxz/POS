@@ -8,21 +8,35 @@ import {
   Package,
   Receipt,
   ShoppingCart,
+  TrendingUp,
+  Users,
   Wallet,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useProfile } from "@/components/ProfileProvider";
+import { hasRole, Role, ROLE_LABELS } from "@/lib/types";
 
-const NAV_ITEMS = [
-  { href: "/", label: "ขายสินค้า", icon: ShoppingCart },
-  { href: "/dashboard", label: "ภาพรวม", icon: LayoutDashboard },
-  { href: "/sales", label: "ประวัติขาย", icon: Receipt },
-  { href: "/expenses", label: "รายจ่าย", icon: Wallet },
-  { href: "/products", label: "สินค้า", icon: Package },
+const NAV_ITEMS: {
+  href: string;
+  label: string;
+  icon: typeof ShoppingCart;
+  minRole: Role;
+}[] = [
+  { href: "/", label: "ขายสินค้า", icon: ShoppingCart, minRole: "staff" },
+  { href: "/dashboard", label: "ภาพรวม", icon: LayoutDashboard, minRole: "manager" },
+  { href: "/sales", label: "ประวัติขาย", icon: Receipt, minRole: "manager" },
+  { href: "/income", label: "รายได้", icon: TrendingUp, minRole: "manager" },
+  { href: "/expenses", label: "รายจ่าย", icon: Wallet, minRole: "manager" },
+  { href: "/products", label: "สินค้า", icon: Package, minRole: "manager" },
+  { href: "/staff", label: "พนักงาน", icon: Users, minRole: "owner" },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { profile } = useProfile();
+  const role = profile?.role ?? "staff";
+  const visibleItems = NAV_ITEMS.filter((item) => hasRole(role, item.minRole));
 
   async function handleLogout() {
     const supabase = createClient();
@@ -41,11 +55,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <div>
             <p className="font-bold leading-tight">POS</p>
-            <p className="text-xs text-neutral-500">ระบบขายหน้าร้าน</p>
+            <p className="text-xs text-neutral-500">
+              {profile ? ROLE_LABELS[profile.role] : "ระบบขายหน้าร้าน"}
+            </p>
           </div>
         </div>
         <nav className="flex-1 space-y-1 px-3">
-          {NAV_ITEMS.map((item) => {
+          {visibleItems.map((item) => {
             const active = pathname === item.href;
             const Icon = item.icon;
             return (
@@ -82,7 +98,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Bottom nav สำหรับมือถือ */}
       <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-neutral-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
-        {NAV_ITEMS.map((item) => {
+        {visibleItems.map((item) => {
           const active = pathname === item.href;
           const Icon = item.icon;
           return (
