@@ -18,6 +18,8 @@ import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/components/ProfileProvider";
 import { hasRole, Role, ROLE_LABELS } from "@/lib/types";
 import OrderNotifications from "@/components/OrderNotifications";
+import PushSetup from "@/components/PushSetup";
+import { useWakeLock } from "@/lib/useWakeLock";
 
 const NAV_ITEMS: {
   href: string;
@@ -42,6 +44,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const role = profile?.role ?? "staff";
   const visibleItems = NAV_ITEMS.filter((item) => hasRole(role, item.minRole));
 
+  useWakeLock(!!profile);
+
   async function handleLogout() {
     const supabase = createClient();
     await supabase.auth.signOut();
@@ -52,6 +56,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-dvh">
       <OrderNotifications />
+      <PushSetup />
       {/* Sidebar สำหรับจอใหญ่ (iPad แนวนอน / PC) */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-neutral-200 bg-white md:flex">
         <div className="flex items-center gap-2.5 px-5 py-5">

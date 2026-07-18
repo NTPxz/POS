@@ -13,10 +13,10 @@ type Toast = {
   message: string;
 };
 
-const TOAST_MS = 11000;
+const TOAST_MS = 16000;
 const BATCH_MS = 900;
 
-// ทำนองแจ้งเตือน — เพลงสั้นๆ วนซ้ำจนยาวรวม ~10 วิ ให้ได้ยินชัดในร้านที่มีเสียงดัง
+// ทำนองแจ้งเตือน — เพลงสั้นๆ วนซ้ำจนยาวรวม ~15 วิ ให้ได้ยินชัดในร้านที่มีเสียงดัง
 const ORDER_NOTES = [
   { freq: 523.25, dur: 0.24 }, // C5
   { freq: 659.25, dur: 0.24 }, // E5
@@ -37,7 +37,7 @@ const BILL_NOTES = [
   { freq: 880, dur: 0.23 },
   { freq: 659.25, dur: 0.5 },
 ];
-const MELODY_REPEATS = 4;
+const MELODY_REPEATS = 6;
 const CYCLE_GAP = 0.3;
 const NOTE_GAIN_PEAK = 0.65;
 
@@ -212,9 +212,9 @@ export default function OrderNotifications() {
             }`}
           >
             {t.tone === "bill" ? (
-              <Receipt className="h-4.5 w-4.5" strokeWidth={2} />
+              <Receipt className="h-4 w-4" strokeWidth={2} />
             ) : (
-              <Bell className="h-4.5 w-4.5" strokeWidth={2} />
+              <Bell className="h-4 w-4" strokeWidth={2} />
             )}
           </div>
           <button
