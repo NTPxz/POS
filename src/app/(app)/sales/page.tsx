@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Receipt } from "lucide-react";
+import { AlertCircle, Receipt, RefreshCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   baht,
@@ -19,20 +19,28 @@ export default function SalesPage() {
   const [to, setTo] = useState(today);
   const [sales, setSales] = useState<SaleWithItems[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const loadSales = useCallback(async () => {
     setLoading(true);
-    const fromISO = new Date(`${from}T00:00:00`).toISOString();
-    const toISO = new Date(`${to}T23:59:59.999`).toISOString();
-    const { data } = await supabase
-      .from("sales")
-      .select("*, sale_items(*)")
-      .gte("created_at", fromISO)
-      .lte("created_at", toISO)
-      .order("created_at", { ascending: false });
-    setSales((data as SaleWithItems[]) ?? []);
-    setLoading(false);
+    setLoadError(null);
+    try {
+      const fromISO = new Date(`${from}T00:00:00`).toISOString();
+      const toISO = new Date(`${to}T23:59:59.999`).toISOString();
+      const { data, error } = await supabase
+        .from("sales")
+        .select("*, sale_items(*)")
+        .gte("created_at", fromISO)
+        .lte("created_at", toISO)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setSales((data as SaleWithItems[]) ?? []);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ");
+    } finally {
+      setLoading(false);
+    }
   }, [supabase, from, to]);
 
   useEffect(() => {
@@ -73,7 +81,7 @@ export default function SalesPage() {
             max={to}
             onChange={(e) => setFrom(e.target.value)}
           />
-          <span className="text-slate-400">ถึง</span>
+          <span className="text-neutral-400">ถึง</span>
           <input
             type="date"
             className="input w-auto py-2"
@@ -87,19 +95,19 @@ export default function SalesPage() {
       {/* สรุปช่วงที่เลือก */}
       <div className="mb-4 grid grid-cols-3 gap-3">
         <div className="card p-4">
-          <p className="text-xs text-slate-500 md:text-sm">จำนวนบิล</p>
+          <p className="text-xs text-neutral-500 md:text-sm">จำนวนบิล</p>
           <p className="text-lg font-bold md:text-2xl">
             {formatNumber(completed.length)}
           </p>
         </div>
         <div className="card p-4">
-          <p className="text-xs text-slate-500 md:text-sm">ยอดขาย</p>
-          <p className="text-lg font-bold text-blue-600 md:text-2xl">
+          <p className="text-xs text-neutral-500 md:text-sm">ยอดขาย</p>
+          <p className="text-lg font-bold text-brand-600 md:text-2xl">
             {baht(totalRevenue)}
           </p>
         </div>
         <div className="card p-4">
-          <p className="text-xs text-slate-500 md:text-sm">กำไร</p>
+          <p className="text-xs text-neutral-500 md:text-sm">กำไร</p>
           <p className="text-lg font-bold text-green-600 md:text-2xl">
             {baht(totalProfit)}
           </p>
@@ -107,9 +115,21 @@ export default function SalesPage() {
       </div>
 
       {loading ? (
-        <p className="py-16 text-center text-slate-400">กำลังโหลด...</p>
+        <p className="py-16 text-center text-neutral-400">กำลังโหลด...</p>
+      ) : loadError ? (
+        <div className="py-16 text-center text-red-500">
+          <AlertCircle className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
+          <p className="mb-3 text-sm">โหลดข้อมูลไม่สำเร็จ: {loadError}</p>
+          <button
+            className="btn-secondary inline-flex items-center gap-2"
+            onClick={loadSales}
+          >
+            <RefreshCw className="h-4 w-4" strokeWidth={2} />
+            ลองอีกครั้ง
+          </button>
+        </div>
       ) : sales.length === 0 ? (
-        <div className="py-16 text-center text-slate-400">
+        <div className="py-16 text-center text-neutral-400">
           <Receipt className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
           <p>ไม่มีรายการขายในช่วงวันที่เลือก</p>
         </div>
@@ -133,7 +153,7 @@ export default function SalesPage() {
                         </span>
                       )}
                     </p>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-neutral-500">
                       {formatDateTime(sale.created_at)} ·{" "}
                       {PAYMENT_LABELS[sale.payment_method] ?? sale.payment_method}{" "}
                       · {formatNumber(sale.sale_items.reduce((s, i) => s + Number(i.quantity), 0))}{" "}
@@ -151,11 +171,11 @@ export default function SalesPage() {
                 </button>
 
                 {isOpen && (
-                  <div className="border-t border-slate-100 px-4 py-3">
+                  <div className="border-t border-neutral-100 px-4 py-3">
                     <ul className="space-y-1.5 text-sm">
                       {sale.sale_items.map((item) => (
                         <li key={item.id} className="flex justify-between">
-                          <span className="text-slate-600">
+                          <span className="text-neutral-600">
                             {item.product_name} × {formatNumber(Number(item.quantity))}
                           </span>
                           <span className="font-medium">
@@ -164,8 +184,8 @@ export default function SalesPage() {
                         </li>
                       ))}
                     </ul>
-                    <div className="mt-3 space-y-1 border-t border-slate-100 pt-3 text-sm">
-                      <div className="flex justify-between text-slate-500">
+                    <div className="mt-3 space-y-1 border-t border-neutral-100 pt-3 text-sm">
+                      <div className="flex justify-between text-neutral-500">
                         <span>ยอดรวม</span>
                         <span>{baht(Number(sale.subtotal))}</span>
                       </div>
@@ -181,18 +201,18 @@ export default function SalesPage() {
                       </div>
                       {sale.received !== null && (
                         <>
-                          <div className="flex justify-between text-slate-500">
+                          <div className="flex justify-between text-neutral-500">
                             <span>รับเงิน</span>
                             <span>{baht(Number(sale.received))}</span>
                           </div>
-                          <div className="flex justify-between text-slate-500">
+                          <div className="flex justify-between text-neutral-500">
                             <span>เงินทอน</span>
                             <span>{baht(Number(sale.change ?? 0))}</span>
                           </div>
                         </>
                       )}
                       {sale.note && (
-                        <p className="pt-1 text-slate-500">
+                        <p className="pt-1 text-neutral-500">
                           หมายเหตุ: {sale.note}
                         </p>
                       )}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Tag, Wallet, X } from "lucide-react";
+import { AlertCircle, Plus, RefreshCw, Tag, Wallet, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { baht, formatDate, formatNumber, toDateInput } from "@/lib/format";
 import { Expense, ExpenseCategory, ExpenseWithCategory } from "@/lib/types";
@@ -19,25 +19,34 @@ export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<ExpenseWithCategory[]>([]);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ExpenseWithCategory | null>(null);
   const [catModalOpen, setCatModalOpen] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [expRes, catRes] = await Promise.all([
-      supabase
-        .from("expenses")
-        .select("*, expense_categories(name)")
-        .gte("expense_date", from)
-        .lte("expense_date", to)
-        .order("expense_date", { ascending: false })
-        .order("created_at", { ascending: false }),
-      supabase.from("expense_categories").select("*").order("position"),
-    ]);
-    setExpenses((expRes.data as ExpenseWithCategory[]) ?? []);
-    setCategories((catRes.data as ExpenseCategory[]) ?? []);
-    setLoading(false);
+    setLoadError(null);
+    try {
+      const [expRes, catRes] = await Promise.all([
+        supabase
+          .from("expenses")
+          .select("*, expense_categories(name)")
+          .gte("expense_date", from)
+          .lte("expense_date", to)
+          .order("expense_date", { ascending: false })
+          .order("created_at", { ascending: false }),
+        supabase.from("expense_categories").select("*").order("position"),
+      ]);
+      if (expRes.error) throw expRes.error;
+      if (catRes.error) throw catRes.error;
+      setExpenses((expRes.data as ExpenseWithCategory[]) ?? []);
+      setCategories((catRes.data as ExpenseCategory[]) ?? []);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ");
+    } finally {
+      setLoading(false);
+    }
   }, [supabase, from, to]);
 
   useEffect(() => {
@@ -85,7 +94,7 @@ export default function ExpensesPage() {
               max={to}
               onChange={(e) => setFrom(e.target.value)}
             />
-            <span className="text-slate-400">ถึง</span>
+            <span className="text-neutral-400">ถึง</span>
             <input
               type="date"
               className="input w-auto py-2"
@@ -114,26 +123,26 @@ export default function ExpensesPage() {
       {/* สรุปช่วงที่เลือก */}
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3">
         <div className="card p-4">
-          <p className="text-xs text-slate-500 md:text-sm">จำนวนรายการ</p>
+          <p className="text-xs text-neutral-500 md:text-sm">จำนวนรายการ</p>
           <p className="text-lg font-bold md:text-2xl">
             {formatNumber(expenses.length)}
           </p>
         </div>
         <div className="card p-4">
-          <p className="text-xs text-slate-500 md:text-sm">รายจ่ายรวม</p>
+          <p className="text-xs text-neutral-500 md:text-sm">รายจ่ายรวม</p>
           <p className="text-lg font-bold text-red-600 md:text-2xl">
             {baht(total)}
           </p>
         </div>
         <div className="card col-span-2 p-4 md:col-span-1">
-          <p className="mb-1 text-xs text-slate-500 md:text-sm">แยกตามหมวดหมู่</p>
+          <p className="mb-1 text-xs text-neutral-500 md:text-sm">แยกตามหมวดหมู่</p>
           {byCategory.length === 0 ? (
-            <p className="text-sm text-slate-400">-</p>
+            <p className="text-sm text-neutral-400">-</p>
           ) : (
             <ul className="space-y-0.5">
               {byCategory.slice(0, 3).map(([name, amount]) => (
                 <li key={name} className="flex justify-between text-sm">
-                  <span className="truncate text-slate-600">{name}</span>
+                  <span className="truncate text-neutral-600">{name}</span>
                   <span className="ml-2 shrink-0 font-medium">{baht(amount)}</span>
                 </li>
               ))}
@@ -143,9 +152,21 @@ export default function ExpensesPage() {
       </div>
 
       {loading ? (
-        <p className="py-16 text-center text-slate-400">กำลังโหลด...</p>
+        <p className="py-16 text-center text-neutral-400">กำลังโหลด...</p>
+      ) : loadError ? (
+        <div className="py-16 text-center text-red-500">
+          <AlertCircle className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
+          <p className="mb-3 text-sm">โหลดข้อมูลไม่สำเร็จ: {loadError}</p>
+          <button
+            className="btn-secondary inline-flex items-center gap-2"
+            onClick={loadData}
+          >
+            <RefreshCw className="h-4 w-4" strokeWidth={2} />
+            ลองอีกครั้ง
+          </button>
+        </div>
       ) : expenses.length === 0 ? (
-        <div className="py-16 text-center text-slate-400">
+        <div className="py-16 text-center text-neutral-400">
           <Wallet className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
           <p>ไม่มีรายจ่ายในช่วงวันที่เลือก</p>
         </div>
@@ -155,7 +176,7 @@ export default function ExpensesPage() {
           <div className="card hidden overflow-x-auto md:block">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
+                <tr className="border-b border-neutral-200 text-left text-neutral-500">
                   <th className="px-4 py-3 font-medium">วันที่</th>
                   <th className="px-4 py-3 font-medium">รายการ</th>
                   <th className="px-4 py-3 font-medium">หมวดหมู่</th>
@@ -167,18 +188,18 @@ export default function ExpensesPage() {
                 {expenses.map((e) => (
                   <tr
                     key={e.id}
-                    className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
+                    className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
                   >
-                    <td className="px-4 py-3 text-slate-500">
+                    <td className="px-4 py-3 text-neutral-500">
                       {formatDate(e.expense_date)}
                     </td>
                     <td className="px-4 py-3">
                       <p className="font-medium">{e.title}</p>
                       {e.note && (
-                        <p className="text-xs text-slate-400">{e.note}</p>
+                        <p className="text-xs text-neutral-400">{e.note}</p>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-slate-500">
+                    <td className="px-4 py-3 text-neutral-500">
                       {e.expense_categories?.name ?? "ไม่ระบุหมวดหมู่"}
                     </td>
                     <td className="px-4 py-3 text-right font-semibold text-red-600">
@@ -186,7 +207,7 @@ export default function ExpensesPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button
-                        className="mr-1 rounded-lg px-3 py-1.5 text-blue-600 hover:bg-blue-50"
+                        className="mr-1 rounded-lg px-3 py-1.5 text-brand-600 hover:bg-brand-50"
                         onClick={() => openEdit(e)}
                       >
                         แก้ไข
@@ -211,12 +232,12 @@ export default function ExpensesPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-semibold">{e.title}</p>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-neutral-400">
                       {formatDate(e.expense_date)} ·{" "}
                       {e.expense_categories?.name ?? "ไม่ระบุหมวดหมู่"}
                     </p>
                     {e.note && (
-                      <p className="mt-1 text-xs text-slate-400">{e.note}</p>
+                      <p className="mt-1 text-xs text-neutral-400">{e.note}</p>
                     )}
                   </div>
                   <span className="shrink-0 font-bold text-red-600">
@@ -225,7 +246,7 @@ export default function ExpensesPage() {
                 </div>
                 <div className="mt-3 flex justify-end gap-1">
                   <button
-                    className="rounded-lg bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-600"
+                    className="rounded-lg bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-600"
                     onClick={() => openEdit(e)}
                   >
                     แก้ไข
@@ -344,7 +365,7 @@ function ExpenseModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-2 text-slate-400 hover:bg-slate-100"
+            className="rounded-full p-2 text-neutral-400 hover:bg-neutral-100"
           >
             <X className="h-5 w-5" strokeWidth={2} />
           </button>
@@ -417,7 +438,7 @@ function ExpenseModal({
           )}
         </div>
 
-        <div className="flex gap-2 border-t border-slate-200 p-4 px-6">
+        <div className="flex gap-2 border-t border-neutral-200 p-4 px-6">
           <button type="button" className="btn-secondary flex-1" onClick={onClose}>
             ยกเลิก
           </button>
@@ -474,7 +495,7 @@ function ExpenseCategoryModal({
           <h2 className="text-xl font-bold">หมวดหมู่รายจ่าย</h2>
           <button
             onClick={onClose}
-            className="rounded-full p-2 text-slate-400 hover:bg-slate-100"
+            className="rounded-full p-2 text-neutral-400 hover:bg-neutral-100"
           >
             <X className="h-5 w-5" strokeWidth={2} />
           </button>
@@ -498,7 +519,7 @@ function ExpenseCategoryModal({
           </form>
 
           {categories.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">
+            <p className="py-8 text-center text-sm text-neutral-400">
               ยังไม่มีหมวดหมู่
             </p>
           ) : (
@@ -506,7 +527,7 @@ function ExpenseCategoryModal({
               {categories.map((c) => (
                 <li
                   key={c.id}
-                  className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3"
+                  className="flex items-center justify-between rounded-xl border border-neutral-200 px-4 py-3"
                 >
                   <span className="font-medium">{c.name}</span>
                   <button
@@ -521,7 +542,7 @@ function ExpenseCategoryModal({
           )}
         </div>
 
-        <div className="border-t border-slate-200 p-4 px-6">
+        <div className="border-t border-neutral-200 p-4 px-6">
           <button className="btn-secondary w-full" onClick={onClose}>
             ปิด
           </button>
@@ -540,7 +561,7 @@ function Field({
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-sm font-medium text-slate-700">
+      <label className="mb-1.5 block text-sm font-medium text-neutral-700">
         {label}
       </label>
       {children}

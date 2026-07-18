@@ -31,21 +31,21 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-800 p-4">
+    <main className="flex min-h-dvh items-center justify-center bg-gradient-to-br from-brand-700 via-brand-800 to-neutral-900 p-4">
       <div className="w-full max-w-sm rounded-3xl bg-white p-8 shadow-2xl">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 text-white">
+          <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-600 text-white">
             <ShoppingCart className="h-8 w-8" strokeWidth={2} />
           </div>
           <h1 className="text-2xl font-bold">ระบบขายหน้าร้าน</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-neutral-500">
             เข้าสู่ระบบเพื่อเริ่มขาย
           </p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+            <label className="mb-1.5 block text-sm font-medium text-neutral-700">
               อีเมล
             </label>
             <input
@@ -59,7 +59,7 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+            <label className="mb-1.5 block text-sm font-medium text-neutral-700">
               รหัสผ่าน
             </label>
             <input
@@ -84,7 +84,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-slate-400">
+        <p className="mt-6 text-center text-xs text-neutral-400">
           สร้างบัญชีผู้ใช้ได้ที่ Supabase Dashboard &gt; Authentication &gt; Users
         </p>
       </div>

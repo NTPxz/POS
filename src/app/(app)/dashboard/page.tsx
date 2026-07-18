@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AlertCircle,
   Banknote,
   CheckCircle2,
   CreditCard,
+  RefreshCw,
   Smartphone,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -53,37 +55,47 @@ export default function DashboardPage() {
   const [expenses, setExpenses] = useState<ExpenseWithCategory[]>([]);
   const [lowStock, setLowStock] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const start = periodStart(period);
-    start.setHours(0, 0, 0, 0);
-    const fromISO = start.toISOString();
-    const fromDate = toDateInput(start);
-    const [salesRes, expensesRes, lowRes] = await Promise.all([
-      supabase
-        .from("sales")
-        .select("*, sale_items(*)")
-        .eq("status", "completed")
-        .gte("created_at", fromISO)
-        .order("created_at"),
-      supabase
-        .from("expenses")
-        .select("*, expense_categories(name)")
-        .gte("expense_date", fromDate)
-        .order("expense_date"),
-      supabase
-        .from("products")
-        .select("*")
-        .eq("is_active", true)
-        .eq("track_stock", true)
-        .order("stock"),
-    ]);
-    setSales((salesRes.data as SaleWithItems[]) ?? []);
-    setExpenses((expensesRes.data as ExpenseWithCategory[]) ?? []);
-    const products = (lowRes.data as Product[]) ?? [];
-    setLowStock(products.filter((p) => p.stock <= p.low_stock_threshold));
-    setLoading(false);
+    setLoadError(null);
+    try {
+      const start = periodStart(period);
+      start.setHours(0, 0, 0, 0);
+      const fromISO = start.toISOString();
+      const fromDate = toDateInput(start);
+      const [salesRes, expensesRes, lowRes] = await Promise.all([
+        supabase
+          .from("sales")
+          .select("*, sale_items(*)")
+          .eq("status", "completed")
+          .gte("created_at", fromISO)
+          .order("created_at"),
+        supabase
+          .from("expenses")
+          .select("*, expense_categories(name)")
+          .gte("expense_date", fromDate)
+          .order("expense_date"),
+        supabase
+          .from("products")
+          .select("*")
+          .eq("is_active", true)
+          .eq("track_stock", true)
+          .order("stock"),
+      ]);
+      if (salesRes.error) throw salesRes.error;
+      if (expensesRes.error) throw expensesRes.error;
+      if (lowRes.error) throw lowRes.error;
+      setSales((salesRes.data as SaleWithItems[]) ?? []);
+      setExpenses((expensesRes.data as ExpenseWithCategory[]) ?? []);
+      const products = (lowRes.data as Product[]) ?? [];
+      setLowStock(products.filter((p) => p.stock <= p.low_stock_threshold));
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ");
+    } finally {
+      setLoading(false);
+    }
   }, [supabase, period]);
 
   useEffect(() => {
@@ -167,8 +179,8 @@ export default function DashboardPage() {
               onClick={() => setPeriod(p)}
               className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition ${
                 period === p
-                  ? "bg-blue-600 text-white"
-                  : "bg-white text-slate-600 hover:bg-slate-50"
+                  ? "bg-brand-600 text-white"
+                  : "bg-white text-neutral-600 hover:bg-neutral-50"
               }`}
             >
               {PERIOD_LABELS[p]}
@@ -178,17 +190,29 @@ export default function DashboardPage() {
       </div>
 
       {loading ? (
-        <p className="py-16 text-center text-slate-400">กำลังโหลด...</p>
+        <p className="py-16 text-center text-neutral-400">กำลังโหลด...</p>
+      ) : loadError ? (
+        <div className="py-16 text-center text-red-500">
+          <AlertCircle className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
+          <p className="mb-3 text-sm">โหลดข้อมูลไม่สำเร็จ: {loadError}</p>
+          <button
+            className="btn-secondary inline-flex items-center gap-2"
+            onClick={loadData}
+          >
+            <RefreshCw className="h-4 w-4" strokeWidth={2} />
+            ลองอีกครั้ง
+          </button>
+        </div>
       ) : (
         <div className="space-y-4">
           {/* ตัวเลขสรุป */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-            <StatCard label="ยอดขาย" value={baht(revenue)} accent="text-blue-600" />
-            <StatCard label="ต้นทุนสินค้า" value={baht(cost)} accent="text-slate-700" />
+            <StatCard label="ยอดขาย" value={baht(revenue)} accent="text-brand-600" />
+            <StatCard label="ต้นทุนสินค้า" value={baht(cost)} accent="text-neutral-700" />
             <StatCard
               label="กำไรขั้นต้น"
               value={baht(grossProfit)}
-              accent="text-teal-600"
+              accent="text-sand-700"
             />
             <StatCard
               label="รายจ่ายอื่นๆ"
@@ -203,7 +227,7 @@ export default function DashboardPage() {
             <StatCard
               label={`จำนวนบิล (เฉลี่ย ${baht(avgPerBill)}/บิล)`}
               value={formatNumber(billCount)}
-              accent="text-slate-900"
+              accent="text-neutral-900"
             />
           </div>
 
@@ -211,7 +235,7 @@ export default function DashboardPage() {
           <div className="card p-4 md:p-5">
             <h2 className="mb-4 font-bold">ยอดขายรายวัน</h2>
             {dailyData.every((d) => d.value === 0) ? (
-              <p className="py-8 text-center text-sm text-slate-400">
+              <p className="py-8 text-center text-sm text-neutral-400">
                 ยังไม่มียอดขายในช่วงนี้
               </p>
             ) : (
@@ -222,16 +246,16 @@ export default function DashboardPage() {
                     className="flex min-w-8 flex-1 flex-col items-center gap-1"
                     title={`${d.label}: ${baht(d.value)}`}
                   >
-                    <span className="text-[10px] text-slate-500">
+                    <span className="text-[10px] text-neutral-500">
                       {d.value > 0 ? formatNumber(Math.round(d.value)) : ""}
                     </span>
                     <div
-                      className="w-full max-w-14 rounded-t-lg bg-blue-500 transition hover:bg-blue-600"
+                      className="w-full max-w-14 rounded-t-lg bg-brand-500 transition hover:bg-brand-600"
                       style={{
                         height: `${Math.max((d.value / maxDaily) * 130, d.value > 0 ? 4 : 1)}px`,
                       }}
                     />
-                    <span className="text-[10px] text-slate-400">{d.label}</span>
+                    <span className="text-[10px] text-neutral-400">{d.label}</span>
                   </div>
                 ))}
               </div>
@@ -243,7 +267,7 @@ export default function DashboardPage() {
             <div className="card p-4 md:p-5">
               <h2 className="mb-3 font-bold">สินค้าขายดี Top 5</h2>
               {topProducts.length === 0 ? (
-                <p className="py-6 text-center text-sm text-slate-400">
+                <p className="py-6 text-center text-sm text-neutral-400">
                   ยังไม่มีข้อมูล
                 </p>
               ) : (
@@ -253,15 +277,15 @@ export default function DashboardPage() {
                       <span
                         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
                           i === 0
-                            ? "bg-amber-100 text-amber-700"
-                            : "bg-slate-100 text-slate-500"
+                            ? "bg-sand-200 text-sand-800"
+                            : "bg-neutral-100 text-neutral-500"
                         }`}
                       >
                         {i + 1}
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{p.name}</p>
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-neutral-400">
                           ขายแล้ว {formatNumber(p.qty)} ชิ้น
                         </p>
                       </div>
@@ -277,7 +301,7 @@ export default function DashboardPage() {
               <div className="card p-4 md:p-5">
                 <h2 className="mb-3 font-bold">แยกตามวิธีชำระเงิน</h2>
                 {byPayment.size === 0 ? (
-                  <p className="py-4 text-center text-sm text-slate-400">
+                  <p className="py-4 text-center text-sm text-neutral-400">
                     ยังไม่มีข้อมูล
                   </p>
                 ) : (
@@ -289,7 +313,7 @@ export default function DashboardPage() {
                           key={m}
                           className="flex items-center justify-between"
                         >
-                          <span className="flex items-center gap-2 text-sm text-slate-600">
+                          <span className="flex items-center gap-2 text-sm text-neutral-600">
                             <Icon className="h-4 w-4" strokeWidth={2} />
                             {PAYMENT_LABELS[m] ?? m}
                           </span>
@@ -305,14 +329,14 @@ export default function DashboardPage() {
               <div className="card p-4 md:p-5">
                 <h2 className="mb-3 font-bold">รายจ่ายตามหมวดหมู่</h2>
                 {byExpenseCategory.length === 0 ? (
-                  <p className="py-4 text-center text-sm text-slate-400">
+                  <p className="py-4 text-center text-sm text-neutral-400">
                     ยังไม่มีรายจ่ายในช่วงนี้
                   </p>
                 ) : (
                   <ul className="space-y-2">
                     {byExpenseCategory.map(([name, amount]) => (
                       <li key={name} className="flex items-center justify-between">
-                        <span className="truncate text-sm text-slate-600">
+                        <span className="truncate text-sm text-neutral-600">
                           {name}
                         </span>
                         <span className="ml-2 shrink-0 font-semibold text-red-600">
@@ -335,7 +359,7 @@ export default function DashboardPage() {
                   )}
                 </h2>
                 {lowStock.length === 0 ? (
-                  <p className="flex items-center justify-center gap-1.5 py-4 text-center text-sm text-slate-400">
+                  <p className="flex items-center justify-center gap-1.5 py-4 text-center text-sm text-neutral-400">
                     <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
                     สต๊อกสินค้าปกติดี
                   </p>
@@ -343,7 +367,7 @@ export default function DashboardPage() {
                   <ul className="space-y-2">
                     {lowStock.slice(0, 6).map((p) => (
                       <li key={p.id} className="flex items-center justify-between">
-                        <span className="truncate text-sm text-slate-600">
+                        <span className="truncate text-sm text-neutral-600">
                           {p.name}
                         </span>
                         <span
@@ -379,7 +403,7 @@ function StatCard({
 }) {
   return (
     <div className="card p-4">
-      <p className="text-xs text-slate-500 md:text-sm">{label}</p>
+      <p className="text-xs text-neutral-500 md:text-sm">{label}</p>
       <p className={`mt-1 text-xl font-bold md:text-2xl ${accent}`}>{value}</p>
     </div>
   );

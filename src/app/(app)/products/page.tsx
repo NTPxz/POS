@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Package, Plus, Tag, X } from "lucide-react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  Package,
+  Plus,
+  RefreshCw,
+  Tag,
+  X,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { baht, formatNumber } from "@/lib/format";
 import { Category, Product } from "@/lib/types";
@@ -35,23 +43,33 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [catModalOpen, setCatModalOpen] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [prodRes, catRes] = await Promise.all([
-      supabase
-        .from("products")
-        .select("*")
-        .eq("is_active", true)
-        .order("name"),
-      supabase.from("categories").select("*").order("position"),
-    ]);
-    setProducts((prodRes.data as Product[]) ?? []);
-    setCategories((catRes.data as Category[]) ?? []);
-    setLoading(false);
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [prodRes, catRes] = await Promise.all([
+        supabase
+          .from("products")
+          .select("*")
+          .eq("is_active", true)
+          .order("name"),
+        supabase.from("categories").select("*").order("position"),
+      ]);
+      if (prodRes.error) throw prodRes.error;
+      if (catRes.error) throw catRes.error;
+      setProducts((prodRes.data as Product[]) ?? []);
+      setCategories((catRes.data as Category[]) ?? []);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ");
+    } finally {
+      setLoading(false);
+    }
   }, [supabase]);
 
   useEffect(() => {
@@ -118,9 +136,21 @@ export default function ProductsPage() {
       />
 
       {loading ? (
-        <p className="py-16 text-center text-slate-400">กำลังโหลด...</p>
+        <p className="py-16 text-center text-neutral-400">กำลังโหลด...</p>
+      ) : loadError ? (
+        <div className="py-16 text-center text-red-500">
+          <AlertCircle className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
+          <p className="mb-3 text-sm">โหลดข้อมูลไม่สำเร็จ: {loadError}</p>
+          <button
+            className="btn-secondary inline-flex items-center gap-2"
+            onClick={loadData}
+          >
+            <RefreshCw className="h-4 w-4" strokeWidth={2} />
+            ลองอีกครั้ง
+          </button>
+        </div>
       ) : filtered.length === 0 ? (
-        <div className="py-16 text-center text-slate-400">
+        <div className="py-16 text-center text-neutral-400">
           <Package className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
           <p>{products.length === 0 ? "ยังไม่มีสินค้า — กด “เพิ่มสินค้า” เพื่อเริ่มต้น" : "ไม่พบสินค้าที่ค้นหา"}</p>
         </div>
@@ -130,7 +160,7 @@ export default function ProductsPage() {
           <div className="card hidden overflow-x-auto md:block">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
+                <tr className="border-b border-neutral-200 text-left text-neutral-500">
                   <th className="px-4 py-3 font-medium">สินค้า</th>
                   <th className="px-4 py-3 font-medium">หมวดหมู่</th>
                   <th className="px-4 py-3 text-right font-medium">ราคาขาย</th>
@@ -146,21 +176,21 @@ export default function ProductsPage() {
                   return (
                     <tr
                       key={p.id}
-                      className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
+                      className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
                     >
                       <td className="px-4 py-3">
                         <p className="font-medium">{p.name}</p>
                         {p.barcode && (
-                          <p className="text-xs text-slate-400">{p.barcode}</p>
+                          <p className="text-xs text-neutral-400">{p.barcode}</p>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-500">
+                      <td className="px-4 py-3 text-neutral-500">
                         {catName(p.category_id)}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold">
                         {baht(p.price)}
                       </td>
-                      <td className="px-4 py-3 text-right text-slate-500">
+                      <td className="px-4 py-3 text-right text-neutral-500">
                         {baht(p.cost)}
                       </td>
                       <td className="px-4 py-3 text-right text-green-600">
@@ -186,12 +216,12 @@ export default function ProductsPage() {
                             )}
                           </span>
                         ) : (
-                          <span className="text-slate-400">ไม่นับ</span>
+                          <span className="text-neutral-400">ไม่นับ</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <button
-                          className="mr-1 rounded-lg px-3 py-1.5 text-blue-600 hover:bg-blue-50"
+                          className="mr-1 rounded-lg px-3 py-1.5 text-brand-600 hover:bg-brand-50"
                           onClick={() => openEdit(p)}
                         >
                           แก้ไข
@@ -219,7 +249,7 @@ export default function ProductsPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-semibold">{p.name}</p>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-neutral-400">
                         {catName(p.category_id)}
                         {p.barcode ? ` · ${p.barcode}` : ""}
                       </p>
@@ -231,7 +261,7 @@ export default function ProductsPage() {
                             ? "bg-red-100 text-red-600"
                             : low
                               ? "bg-amber-100 text-amber-700"
-                              : "bg-slate-100 text-slate-600"
+                              : "bg-neutral-100 text-neutral-600"
                         }`}
                       >
                         เหลือ {formatNumber(p.stock)}
@@ -239,10 +269,10 @@ export default function ProductsPage() {
                     )}
                   </div>
                   <div className="mt-3 flex items-end justify-between">
-                    <div className="text-sm text-slate-500">
+                    <div className="text-sm text-neutral-500">
                       <p>
                         ขาย{" "}
-                        <span className="font-bold text-slate-900">
+                        <span className="font-bold text-neutral-900">
                           {baht(p.price)}
                         </span>{" "}
                         · ทุน {baht(p.cost)}
@@ -253,7 +283,7 @@ export default function ProductsPage() {
                     </div>
                     <div className="flex gap-1">
                       <button
-                        className="rounded-lg bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-600"
+                        className="rounded-lg bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-600"
                         onClick={() => openEdit(p)}
                       >
                         แก้ไข
@@ -372,7 +402,7 @@ function ProductModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-2 text-slate-400 hover:bg-slate-100"
+            className="rounded-full p-2 text-neutral-400 hover:bg-neutral-100"
           >
             <X className="h-5 w-5" strokeWidth={2} />
           </button>
@@ -446,10 +476,10 @@ function ProductModal({
             />
           </Field>
 
-          <label className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3">
+          <label className="flex items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3">
             <input
               type="checkbox"
-              className="h-5 w-5 accent-blue-600"
+              className="h-5 w-5 accent-brand-600"
               checked={form.track_stock}
               onChange={(e) => set({ track_stock: e.target.checked })}
             />
@@ -501,7 +531,7 @@ function ProductModal({
           )}
         </div>
 
-        <div className="flex gap-2 border-t border-slate-200 p-4 px-6">
+        <div className="flex gap-2 border-t border-neutral-200 p-4 px-6">
           <button type="button" className="btn-secondary flex-1" onClick={onClose}>
             ยกเลิก
           </button>
@@ -554,7 +584,7 @@ function CategoryModal({
           <h2 className="text-xl font-bold">หมวดหมู่สินค้า</h2>
           <button
             onClick={onClose}
-            className="rounded-full p-2 text-slate-400 hover:bg-slate-100"
+            className="rounded-full p-2 text-neutral-400 hover:bg-neutral-100"
           >
             <X className="h-5 w-5" strokeWidth={2} />
           </button>
@@ -578,7 +608,7 @@ function CategoryModal({
           </form>
 
           {categories.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">
+            <p className="py-8 text-center text-sm text-neutral-400">
               ยังไม่มีหมวดหมู่
             </p>
           ) : (
@@ -586,7 +616,7 @@ function CategoryModal({
               {categories.map((c) => (
                 <li
                   key={c.id}
-                  className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3"
+                  className="flex items-center justify-between rounded-xl border border-neutral-200 px-4 py-3"
                 >
                   <span className="font-medium">{c.name}</span>
                   <button
@@ -601,7 +631,7 @@ function CategoryModal({
           )}
         </div>
 
-        <div className="border-t border-slate-200 p-4 px-6">
+        <div className="border-t border-neutral-200 p-4 px-6">
           <button className="btn-secondary w-full" onClick={onClose}>
             ปิด
           </button>
@@ -620,7 +650,7 @@ function Field({
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-sm font-medium text-slate-700">
+      <label className="mb-1.5 block text-sm font-medium text-neutral-700">
         {label}
       </label>
       {children}

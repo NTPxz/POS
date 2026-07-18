@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AlertCircle,
   Banknote,
   CheckCircle2,
   CreditCard,
   Minus,
   Package,
   Plus,
+  RefreshCw,
   ShoppingCart,
   Smartphone,
   Trash2,
@@ -34,6 +36,7 @@ export default function PosPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -46,17 +49,26 @@ export default function PosPage() {
   } | null>(null);
 
   const loadData = useCallback(async () => {
-    const [prodRes, catRes] = await Promise.all([
-      supabase
-        .from("products")
-        .select("*")
-        .eq("is_active", true)
-        .order("name"),
-      supabase.from("categories").select("*").order("position"),
-    ]);
-    setProducts((prodRes.data as Product[]) ?? []);
-    setCategories((catRes.data as Category[]) ?? []);
-    setLoading(false);
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [prodRes, catRes] = await Promise.all([
+        supabase
+          .from("products")
+          .select("*")
+          .eq("is_active", true)
+          .order("name"),
+        supabase.from("categories").select("*").order("position"),
+      ]);
+      if (prodRes.error) throw prodRes.error;
+      if (catRes.error) throw catRes.error;
+      setProducts((prodRes.data as Product[]) ?? []);
+      setCategories((catRes.data as Category[]) ?? []);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ");
+    } finally {
+      setLoading(false);
+    }
   }, [supabase]);
 
   useEffect(() => {
@@ -175,9 +187,21 @@ export default function PosPage() {
 
         {/* ตารางสินค้า */}
         {loading ? (
-          <p className="py-16 text-center text-slate-400">กำลังโหลดสินค้า...</p>
+          <p className="py-16 text-center text-neutral-400">กำลังโหลดสินค้า...</p>
+        ) : loadError ? (
+          <div className="py-16 text-center text-red-500">
+            <AlertCircle className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
+            <p className="mb-3 text-sm">โหลดข้อมูลไม่สำเร็จ: {loadError}</p>
+            <button
+              className="btn-secondary inline-flex items-center gap-2"
+              onClick={loadData}
+            >
+              <RefreshCw className="h-4 w-4" strokeWidth={2} />
+              ลองอีกครั้ง
+            </button>
+          </div>
         ) : filtered.length === 0 ? (
-          <div className="py-16 text-center text-slate-400">
+          <div className="py-16 text-center text-neutral-400">
             <Package className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
             <p>
               {products.length === 0
@@ -195,7 +219,7 @@ export default function PosPage() {
       </div>
 
       {/* ตะกร้า: จอใหญ่แสดงเป็น panel ขวา */}
-      <div className="hidden w-96 shrink-0 border-l border-slate-200 bg-white lg:flex lg:flex-col">
+      <div className="hidden w-96 shrink-0 border-l border-neutral-200 bg-white lg:flex lg:flex-col">
         {cartPanel}
       </div>
 
@@ -203,7 +227,7 @@ export default function PosPage() {
       {itemCount > 0 && !cartOpen && (
         <button
           onClick={() => setCartOpen(true)}
-          className="fixed inset-x-4 bottom-20 z-40 flex items-center justify-between rounded-2xl bg-blue-600 px-5 py-4 text-white shadow-xl active:scale-[0.98] md:bottom-4 md:left-60 lg:hidden"
+          className="fixed inset-x-4 bottom-20 z-40 flex items-center justify-between rounded-2xl bg-brand-600 px-5 py-4 text-white shadow-xl active:scale-[0.98] md:bottom-4 md:left-60 lg:hidden"
         >
           <span className="flex items-center gap-2 font-semibold">
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 text-sm">
@@ -226,7 +250,7 @@ export default function PosPage() {
               <h2 className="text-lg font-bold">ตะกร้าสินค้า</h2>
               <button
                 onClick={() => setCartOpen(false)}
-                className="rounded-full p-2 text-slate-400 hover:bg-slate-100"
+                className="rounded-full p-2 text-neutral-400 hover:bg-neutral-100"
               >
                 <X className="h-5 w-5" strokeWidth={2} />
               </button>
@@ -266,8 +290,8 @@ function CategoryChip({
       onClick={onClick}
       className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition ${
         active
-          ? "bg-blue-600 text-white"
-          : "bg-white text-slate-600 hover:bg-slate-50"
+          ? "bg-brand-600 text-white"
+          : "bg-white text-neutral-600 hover:bg-neutral-50"
       }`}
     >
       {label}
@@ -291,9 +315,9 @@ function ProductCard({
   return (
     <button
       onClick={onAdd}
-      className="card relative flex flex-col overflow-hidden text-left transition active:scale-[0.97] hover:border-blue-300"
+      className="card relative flex flex-col overflow-hidden text-left transition active:scale-[0.97] hover:border-brand-300"
     >
-      <div className="flex aspect-square items-center justify-center bg-slate-50">
+      <div className="flex aspect-square items-center justify-center bg-neutral-50">
         {product.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -302,7 +326,7 @@ function ProductCard({
             className="h-full w-full object-cover"
           />
         ) : (
-          <Package className="h-10 w-10 text-slate-300" strokeWidth={1.5} />
+          <Package className="h-10 w-10 text-neutral-300" strokeWidth={1.5} />
         )}
       </div>
       {product.track_stock && (
@@ -312,7 +336,7 @@ function ProductCard({
               ? "bg-red-100 text-red-600"
               : lowStock
                 ? "bg-amber-100 text-amber-700"
-                : "bg-white/90 text-slate-600"
+                : "bg-white/90 text-neutral-600"
           }`}
         >
           {outOfStock ? "หมด" : `เหลือ ${formatNumber(product.stock)}`}
@@ -322,7 +346,7 @@ function ProductCard({
         <p className="line-clamp-2 text-sm font-medium leading-snug">
           {product.name}
         </p>
-        <p className="mt-auto pt-1 font-bold text-blue-600">
+        <p className="mt-auto pt-1 font-bold text-brand-600">
           {baht(product.price)}
         </p>
       </div>
@@ -352,7 +376,7 @@ function CartPanel({
         {cart.length > 0 && (
           <button
             onClick={onClear}
-            className="text-sm text-slate-400 hover:text-red-500"
+            className="text-sm text-neutral-400 hover:text-red-500"
           >
             ล้างตะกร้า
           </button>
@@ -361,7 +385,7 @@ function CartPanel({
 
       <div className="flex-1 overflow-y-auto p-4">
         {cart.length === 0 ? (
-          <div className="py-16 text-center text-slate-400">
+          <div className="py-16 text-center text-neutral-400">
             <ShoppingCart className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
             <p className="text-sm">แตะสินค้าเพื่อเพิ่มลงตะกร้า</p>
           </div>
@@ -370,15 +394,15 @@ function CartPanel({
             {cart.map((item) => (
               <li
                 key={item.product.id}
-                className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"
+                className="flex items-center gap-3 rounded-xl border border-neutral-200 p-3"
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">
                     {item.product.name}
                   </p>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-neutral-500">
                     {baht(item.product.price)} × {formatNumber(item.quantity)} ={" "}
-                    <span className="font-semibold text-slate-700">
+                    <span className="font-semibold text-neutral-700">
                       {baht(item.product.price * item.quantity)}
                     </span>
                   </p>
@@ -395,7 +419,7 @@ function CartPanel({
                   </QtyButton>
                   <button
                     onClick={() => onRemove(item.product.id)}
-                    className="ml-1 p-1 text-slate-300 hover:text-red-500"
+                    className="ml-1 p-1 text-neutral-300 hover:text-red-500"
                     aria-label="ลบรายการ"
                   >
                     <Trash2 className="h-4 w-4" strokeWidth={2} />
@@ -407,9 +431,9 @@ function CartPanel({
         )}
       </div>
 
-      <div className="border-t border-slate-200 p-4">
+      <div className="border-t border-neutral-200 p-4">
         <div className="mb-3 flex items-center justify-between">
-          <span className="text-slate-500">
+          <span className="text-neutral-500">
             รวม {formatNumber(cart.reduce((s, i) => s + i.quantity, 0))} ชิ้น
           </span>
           <span className="text-2xl font-bold">{baht(subtotal)}</span>
@@ -436,7 +460,7 @@ function QtyButton({
   return (
     <button
       onClick={onClick}
-      className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-600 transition active:scale-95 hover:bg-slate-200"
+      className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-100 text-neutral-600 transition active:scale-95 hover:bg-neutral-200"
     >
       {children}
     </button>
@@ -506,7 +530,7 @@ function CheckoutModal({
           <h2 className="text-xl font-bold">คิดเงิน</h2>
           <button
             onClick={onClose}
-            className="rounded-full p-2 text-slate-400 hover:bg-slate-100"
+            className="rounded-full p-2 text-neutral-400 hover:bg-neutral-100"
           >
             <X className="h-5 w-5" strokeWidth={2} />
           </button>
@@ -514,13 +538,13 @@ function CheckoutModal({
 
         <div className="flex-1 space-y-5 overflow-y-auto px-6 py-4">
           {/* สรุปยอด */}
-          <div className="rounded-2xl bg-slate-50 p-4">
-            <div className="flex justify-between text-sm text-slate-500">
+          <div className="rounded-2xl bg-neutral-50 p-4">
+            <div className="flex justify-between text-sm text-neutral-500">
               <span>ยอดรวม ({cart.reduce((s, i) => s + i.quantity, 0)} ชิ้น)</span>
               <span>{baht(subtotal)}</span>
             </div>
             <div className="mt-2 flex items-center justify-between gap-3">
-              <label className="text-sm text-slate-500">ส่วนลด (บาท)</label>
+              <label className="text-sm text-neutral-500">ส่วนลด (บาท)</label>
               <input
                 type="number"
                 inputMode="decimal"
@@ -531,9 +555,9 @@ function CheckoutModal({
                 onChange={(e) => setDiscountStr(e.target.value)}
               />
             </div>
-            <div className="mt-3 flex justify-between border-t border-slate-200 pt-3">
+            <div className="mt-3 flex justify-between border-t border-neutral-200 pt-3">
               <span className="font-semibold">ยอดสุทธิ</span>
-              <span className="text-2xl font-bold text-blue-600">
+              <span className="text-2xl font-bold text-brand-600">
                 {baht(total)}
               </span>
             </div>
@@ -541,7 +565,7 @@ function CheckoutModal({
 
           {/* วิธีชำระเงิน */}
           <div>
-            <p className="mb-2 text-sm font-medium text-slate-700">
+            <p className="mb-2 text-sm font-medium text-neutral-700">
               วิธีชำระเงิน
             </p>
             <div className="grid grid-cols-3 gap-2">
@@ -553,8 +577,8 @@ function CheckoutModal({
                     onClick={() => setMethod(m)}
                     className={`flex flex-col items-center gap-1.5 rounded-xl border-2 py-3 font-semibold transition ${
                       method === m
-                        ? "border-blue-600 bg-blue-50 text-blue-700"
-                        : "border-slate-200 text-slate-600 hover:border-slate-300"
+                        ? "border-brand-600 bg-brand-50 text-brand-700"
+                        : "border-neutral-200 text-neutral-600 hover:border-neutral-300"
                     }`}
                   >
                     <Icon className="h-5 w-5" strokeWidth={2} />
@@ -568,7 +592,7 @@ function CheckoutModal({
           {/* รับเงิน/ทอน สำหรับเงินสด */}
           {method === "cash" && (
             <div>
-              <p className="mb-2 text-sm font-medium text-slate-700">
+              <p className="mb-2 text-sm font-medium text-neutral-700">
                 รับเงินมา (บาท)
               </p>
               <input
@@ -582,7 +606,7 @@ function CheckoutModal({
               />
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
-                  className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-200"
+                  className="rounded-lg bg-neutral-100 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-200"
                   onClick={() => setReceivedStr(String(total))}
                 >
                   พอดี
@@ -590,7 +614,7 @@ function CheckoutModal({
                 {QUICK_CASH.filter((v) => v >= total).slice(0, 4).map((v) => (
                   <button
                     key={v}
-                    className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-200"
+                    className="rounded-lg bg-neutral-100 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-200"
                     onClick={() => setReceivedStr(String(v))}
                   >
                     {formatNumber(v)}
@@ -631,7 +655,7 @@ function CheckoutModal({
           )}
         </div>
 
-        <div className="border-t border-slate-200 p-4 px-6">
+        <div className="border-t border-neutral-200 p-4 px-6">
           <button
             className="btn-primary w-full py-3.5 text-lg"
             disabled={saving || cashInsufficient}
@@ -661,7 +685,7 @@ function SuccessModal({
           <CheckCircle2 className="h-9 w-9" strokeWidth={2} />
         </div>
         <h2 className="text-xl font-bold">ขายสำเร็จ!</h2>
-        <p className="mt-2 text-3xl font-bold text-blue-600">
+        <p className="mt-2 text-3xl font-bold text-brand-600">
           {baht(info.total)}
         </p>
         {info.change !== null && (
