@@ -43,7 +43,7 @@ create table if not exists public.sales (
   received numeric(12, 2),                        -- เงินที่รับมา (เงินสด)
   change numeric(12, 2),                          -- เงินทอน
   note text,
-  status text not null default 'completed',       -- completed | voided
+  status text not null default 'completed',       -- open | completed | voided
   voided_at timestamptz,
   user_id uuid references auth.users (id),
   created_at timestamptz not null default now()
@@ -315,7 +315,7 @@ begin
   end if;
 
   update sales set status = 'voided', voided_at = now()
-    where id = p_sale_id and status = 'completed';
+    where id = p_sale_id and status in ('open', 'completed');
   if not found then
     raise exception 'ไม่พบบิลหรือบิลถูกยกเลิกไปแล้ว';
   end if;
@@ -438,4 +438,153 @@ insert into public.categories (name, position) values
   ('เครื่องดื่ม', 1),
   ('อาหาร', 2),
   ('ขนม', 3)
+on conflict do nothing;
+
+-- ============================================================
+-- โต๊ะ + บิลต่อโต๊ะ (กินก่อนจ่ายทีหลัง)
+-- ============================================================
+create table if not exists public.dining_tables (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  position int not null default 0,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+alter table public.dining_tables enable row level security;
+
+drop policy if exists "select tables" on public.dining_tables;
+create policy "select tables" on public.dining_tables
+  for select to authenticated using (true);
+drop policy if exists "owner insert tables" on public.dining_tables;
+create policy "owner insert tables" on public.dining_tables
+  for insert to authenticated with check (public.is_owner());
+drop policy if exists "owner update tables" on public.dining_tables;
+create policy "owner update tables" on public.dining_tables
+  for update to authenticated using (public.is_owner()) with check (public.is_owner());
+drop policy if exists "owner delete tables" on public.dining_tables;
+create policy "owner delete tables" on public.dining_tables
+  for delete to authenticated using (public.is_owner());
+
+-- บิลผูกกับโต๊ะได้ (null = ขายด่วน/ไม่นั่งโต๊ะ) และมีสถานะ "open" เพิ่มเข้ามา
+alter table public.sales add column if not exists table_id uuid references public.dining_tables (id) on delete set null;
+create index if not exists idx_sales_table_open on public.sales (table_id) where status = 'open';
+
+alter table public.sales drop constraint if exists sales_status_check;
+alter table public.sales add constraint sales_status_check check (status in ('open', 'completed', 'voided'));
+
+-- เพิ่มออเดอร์เข้าโต๊ะ: สร้างบิลใหม่ถ้าโต๊ะว่าง หรือรวมเข้าบิล "open" เดิมถ้ามีอยู่แล้ว
+create or replace function public.add_order_to_table(
+  p_table_id uuid,
+  p_items jsonb
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_sale_id uuid;
+  v_item jsonb;
+  v_product products%rowtype;
+  v_qty numeric;
+  v_line_total numeric;
+  v_line_cost numeric;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+  if p_items is null or jsonb_array_length(p_items) = 0 then
+    raise exception 'ไม่มีรายการสินค้า';
+  end if;
+
+  select id into v_sale_id from sales
+    where table_id = p_table_id and status = 'open'
+    limit 1;
+
+  if v_sale_id is null then
+    insert into sales (table_id, subtotal, total, cost_total, payment_method, status, user_id)
+    values (p_table_id, 0, 0, 0, 'cash', 'open', auth.uid())
+    returning id into v_sale_id;
+  end if;
+
+  for v_item in select * from jsonb_array_elements(p_items) loop
+    v_qty := (v_item ->> 'quantity')::numeric;
+    if v_qty is null or v_qty <= 0 then
+      raise exception 'จำนวนสินค้าไม่ถูกต้อง';
+    end if;
+
+    select * into v_product from products
+      where id = (v_item ->> 'product_id')::uuid
+      for update;
+    if not found then
+      raise exception 'ไม่พบสินค้า (id: %)', v_item ->> 'product_id';
+    end if;
+
+    v_line_total := v_product.price * v_qty;
+    v_line_cost := v_product.cost * v_qty;
+
+    insert into sale_items (sale_id, product_id, product_name, price, cost, quantity, total)
+    values (v_sale_id, v_product.id, v_product.name, v_product.price, v_product.cost, v_qty, v_line_total);
+
+    if v_product.track_stock then
+      update products set stock = stock - v_qty, updated_at = now() where id = v_product.id;
+    end if;
+
+    update sales set
+      subtotal = subtotal + v_line_total,
+      total = greatest(subtotal + v_line_total - discount, 0),
+      cost_total = cost_total + v_line_cost
+      where id = v_sale_id;
+  end loop;
+
+  return v_sale_id;
+end;
+$$;
+
+-- เก็บเงิน/ปิดโต๊ะ: ปิดบิล "open" เป็น "completed" พร้อมรับส่วนลด/วิธีชำระ/เงินรับ
+create or replace function public.checkout_table(
+  p_sale_id uuid,
+  p_discount numeric default 0,
+  p_payment_method text default 'cash',
+  p_received numeric default null,
+  p_note text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_subtotal numeric;
+  v_total numeric;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select subtotal into v_subtotal from sales where id = p_sale_id and status = 'open';
+  if not found then
+    raise exception 'ไม่พบบิลที่เปิดอยู่ของโต๊ะนี้';
+  end if;
+
+  v_total := greatest(v_subtotal - coalesce(p_discount, 0), 0);
+
+  update sales set
+    discount = coalesce(p_discount, 0),
+    total = v_total,
+    payment_method = p_payment_method,
+    received = p_received,
+    change = case when p_received is not null then greatest(p_received - v_total, 0) end,
+    note = p_note,
+    status = 'completed'
+    where id = p_sale_id;
+end;
+$$;
+
+revoke execute on function public.add_order_to_table from public, anon;
+revoke execute on function public.checkout_table from public, anon;
+grant execute on function public.add_order_to_table to authenticated;
+grant execute on function public.checkout_table to authenticated;
+
+insert into public.dining_tables (name, position) values
+  ('โต๊ะ 1', 1), ('โต๊ะ 2', 2), ('โต๊ะ 3', 3), ('โต๊ะ 4', 4), ('โต๊ะ 5', 5)
 on conflict do nothing;

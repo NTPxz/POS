@@ -13,6 +13,8 @@ import {
 import { PAYMENT_LABELS, SaleWithItems } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
 
+type SaleRow = SaleWithItems & { dining_tables: { name: string } | null };
+
 export default function SalesPage() {
   return (
     <RequireRole min="staff">
@@ -26,7 +28,7 @@ function SalesPageContent() {
   const today = toDateInput(new Date());
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
-  const [sales, setSales] = useState<SaleWithItems[]>([]);
+  const [sales, setSales] = useState<SaleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -39,12 +41,13 @@ function SalesPageContent() {
       const toISO = new Date(`${to}T23:59:59.999`).toISOString();
       const { data, error } = await supabase
         .from("sales")
-        .select("*, sale_items(*)")
+        .select("*, sale_items(*), dining_tables(name)")
+        .neq("status", "open")
         .gte("created_at", fromISO)
         .lte("created_at", toISO)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      setSales((data as SaleWithItems[]) ?? []);
+      setSales((data as SaleRow[]) ?? []);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ");
     } finally {
@@ -158,6 +161,11 @@ function SalesPageContent() {
                   <div>
                     <p className="font-semibold">
                       {billNumber(sale.sale_number)}{" "}
+                      {sale.dining_tables && (
+                        <span className="ml-1 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">
+                          {sale.dining_tables.name}
+                        </span>
+                      )}{" "}
                       {voided && (
                         <span className="ml-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600">
                           ยกเลิกแล้ว

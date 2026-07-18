@@ -23,9 +23,12 @@ export type Product = {
 
 export type PaymentMethod = "cash" | "transfer" | "card";
 
+export type SaleStatus = "open" | "completed" | "voided";
+
 export type Sale = {
   id: string;
   sale_number: number;
+  table_id: string | null;
   subtotal: number;
   discount: number;
   total: number;
@@ -34,7 +37,7 @@ export type Sale = {
   received: number | null;
   change: number | null;
   note: string | null;
-  status: "completed" | "voided";
+  status: SaleStatus;
   voided_at: string | null;
   user_id: string | null;
   created_at: string;
@@ -132,4 +135,12 @@ export type Profile = {
   role: Role;
   created_at: string;
   updated_at: string;
+};
+
+export type DiningTable = {
+  id: string;
+  name: string;
+  position: number;
+  is_active: boolean;
+  created_at: string;
 };
