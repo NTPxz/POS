@@ -80,20 +80,22 @@ function SalesPageContent() {
 
   return (
     <div className="flex-1 p-4 md:p-6">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-bold md:text-2xl">ประวัติการขาย</h1>
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
           <input
             type="date"
-            className="input w-auto py-2"
+            className="input w-full py-2 sm:w-auto"
             value={from}
             max={to}
             onChange={(e) => setFrom(e.target.value)}
           />
-          <span className="text-neutral-400">ถึง</span>
+          <span className="text-center text-xs text-neutral-400 sm:text-sm">
+            ถึง
+          </span>
           <input
             type="date"
-            className="input w-auto py-2"
+            className="input w-full py-2 sm:w-auto"
             value={to}
             min={from}
             onChange={(e) => setTo(e.target.value)}

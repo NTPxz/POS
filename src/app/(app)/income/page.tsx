@@ -126,18 +126,20 @@ function IncomePageContent() {
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-bold md:text-2xl">รายได้</h1>
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
             <input
               type="date"
-              className="input min-w-0 flex-1 py-2 sm:w-36 sm:flex-none"
+              className="input w-full py-2 sm:w-auto"
               value={from}
               max={to}
               onChange={(e) => setFrom(e.target.value)}
             />
-            <span className="shrink-0 text-sm text-neutral-400">ถึง</span>
+            <span className="text-center text-xs text-neutral-400 sm:text-sm">
+              ถึง
+            </span>
             <input
               type="date"
-              className="input min-w-0 flex-1 py-2 sm:w-36 sm:flex-none"
+              className="input w-full py-2 sm:w-auto"
               value={to}
               min={from}
               onChange={(e) => setTo(e.target.value)}
