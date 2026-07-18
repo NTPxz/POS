@@ -79,10 +79,10 @@ function SalesPageContent() {
   }
 
   return (
-    <div className="flex-1 p-4 md:p-6">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="min-w-0 flex-1 p-4 md:p-6">
+      <div className="mb-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-bold md:text-2xl">ประวัติการขาย</h1>
-        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+        <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
           <input
             type="date"
             className="input w-full py-2 sm:w-auto"

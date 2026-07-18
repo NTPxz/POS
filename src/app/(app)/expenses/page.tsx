@@ -105,11 +105,11 @@ function ExpensesPageContent() {
   }
 
   return (
-    <div className="flex-1 p-4 md:p-6">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="min-w-0 flex-1 p-4 md:p-6">
+      <div className="mb-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-bold md:text-2xl">รายจ่าย / ต้นทุน</h1>
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
             <input
               type="date"
               className="input w-full py-2 sm:w-auto"
@@ -128,19 +128,19 @@ function ExpensesPageContent() {
               onChange={(e) => setTo(e.target.value)}
             />
           </div>
-          <div className="flex gap-2">
+          <div className="flex min-w-0 gap-2">
             <button
-              className="btn-secondary inline-flex flex-1 items-center justify-center gap-2 sm:flex-none"
+              className="btn-secondary inline-flex min-w-0 flex-1 items-center justify-center gap-2 break-words sm:flex-none"
               onClick={() => setCatModalOpen(true)}
             >
-              <Tag className="h-4 w-4" strokeWidth={2} />
+              <Tag className="h-4 w-4 shrink-0" strokeWidth={2} />
               หมวดหมู่
             </button>
             <button
-              className="btn-primary inline-flex flex-1 items-center justify-center gap-2 sm:flex-none"
+              className="btn-primary inline-flex min-w-0 flex-1 items-center justify-center gap-2 break-words sm:flex-none"
               onClick={openAdd}
             >
-              <Plus className="h-4 w-4" strokeWidth={2.5} />
+              <Plus className="h-4 w-4 shrink-0" strokeWidth={2.5} />
               บันทึกรายจ่าย
             </button>
           </div>

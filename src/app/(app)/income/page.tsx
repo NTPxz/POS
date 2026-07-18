@@ -122,11 +122,11 @@ function IncomePageContent() {
   }
 
   return (
-    <div className="flex-1 p-4 md:p-6">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="min-w-0 flex-1 p-4 md:p-6">
+      <div className="mb-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-bold md:text-2xl">รายได้</h1>
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
             <input
               type="date"
               className="input w-full py-2 sm:w-auto"
@@ -145,26 +145,26 @@ function IncomePageContent() {
               onChange={(e) => setTo(e.target.value)}
             />
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap">
             <button
-              className="btn-secondary inline-flex items-center justify-center gap-2"
+              className="btn-secondary inline-flex min-w-0 items-center justify-center gap-2 break-words"
               onClick={() => setCatModalOpen(true)}
             >
-              <Tag className="h-4 w-4" strokeWidth={2} />
+              <Tag className="h-4 w-4 shrink-0" strokeWidth={2} />
               หมวดหมู่
             </button>
             <button
-              className="btn-secondary inline-flex items-center justify-center gap-2"
+              className="btn-secondary inline-flex min-w-0 items-center justify-center gap-2 break-words"
               onClick={() => setSaleModalOpen(true)}
             >
-              <ShoppingCart className="h-4 w-4" strokeWidth={2} />
+              <ShoppingCart className="h-4 w-4 shrink-0" strokeWidth={2} />
               บันทึกยอดขายเอง
             </button>
             <button
-              className="btn-primary col-span-2 inline-flex items-center justify-center gap-2 sm:col-span-1"
+              className="btn-primary col-span-2 inline-flex min-w-0 items-center justify-center gap-2 break-words sm:col-span-1"
               onClick={openAdd}
             >
-              <Plus className="h-4 w-4" strokeWidth={2.5} />
+              <Plus className="h-4 w-4 shrink-0" strokeWidth={2.5} />
               บันทึกรายได้
             </button>
           </div>

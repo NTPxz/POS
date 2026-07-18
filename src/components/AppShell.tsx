@@ -92,7 +92,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* เนื้อหา */}
-      <div className="flex min-h-dvh flex-1 flex-col pb-20 md:ml-56 md:pb-0">
+      <div className="flex min-h-dvh min-w-0 flex-1 flex-col overflow-x-hidden pb-20 md:ml-56 md:pb-0">
         {children}
       </div>
 
@@ -105,21 +105,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium ${
+              className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium ${
                 active ? "text-brand-600" : "text-neutral-500"
               }`}
             >
-              <Icon className="h-5 w-5" strokeWidth={2} />
-              {item.label}
+              <Icon className="h-5 w-5 shrink-0" strokeWidth={2} />
+              <span className="w-full truncate text-center">{item.label}</span>
             </Link>
           );
         })}
         <button
           onClick={handleLogout}
-          className="flex flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium text-neutral-500"
+          className="flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium text-neutral-500"
         >
-          <LogOut className="h-5 w-5" strokeWidth={2} />
-          ออก
+          <LogOut className="h-5 w-5 shrink-0" strokeWidth={2} />
+          <span className="w-full truncate text-center">ออก</span>
         </button>
       </nav>
     </div>
