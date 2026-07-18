@@ -113,8 +113,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {children}
       </div>
 
-      {/* Bottom nav สำหรับมือถือ */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-neutral-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
+      {/* Bottom nav สำหรับมือถือ — transform-gpu กันเบราว์เซอร์มือถือ (โดยเฉพาะ iOS) เรนเดอร์
+         ให้แถบนี้เลื่อนตามเนื้อหาระหว่างสกอลล์ก่อนจะ snap กลับที่เดิม โดยบังคับให้เป็น
+         compositing layer แยกของตัวเอง */}
+      <nav className="fixed inset-x-0 bottom-0 z-30 flex transform-gpu border-t border-neutral-200 bg-white pb-[env(safe-area-inset-bottom)] will-change-transform md:hidden">
         {visibleItems.map((item) => {
           const active = pathname === item.href;
           const Icon = item.icon;
