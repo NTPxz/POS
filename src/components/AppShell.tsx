@@ -54,7 +54,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-dvh">
+    <div className="flex h-dvh overflow-hidden">
       <OrderNotifications />
       <PushSetup />
       {/* Sidebar สำหรับจอใหญ่ (iPad แนวนอน / PC) */}
@@ -108,39 +108,43 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      {/* เนื้อหา */}
-      <div className="flex min-h-dvh min-w-0 flex-1 flex-col overflow-x-hidden pb-20 md:ml-56 md:pb-0">
-        {children}
-      </div>
+      {/* คอลัมน์เนื้อหา: ครอบความสูงไว้แค่ h-dvh แล้วให้เนื้อหาสกอลล์ในตัวเอง
+         แถบเมนูล่างเลยเป็น flex item ปกติท้ายคอลัมน์ ไม่ต้องใช้ position: fixed
+         (เบราว์เซอร์มือถือบางตัวโดยเฉพาะ iOS Safari เรนเดอร์ fixed element
+         เลื่อนตามเนื้อหาระหว่างสกอลล์ก่อน snap กลับที่เดิม — ไม่ fixed แต่ยึด
+         layout ด้วย flexbox ความสูงคงที่แทน ตัดปัญหานี้ไปเลย) */}
+      <div className="flex h-dvh min-w-0 flex-1 flex-col md:ml-56">
+        <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+          {children}
+        </div>
 
-      {/* Bottom nav สำหรับมือถือ — transform-gpu กันเบราว์เซอร์มือถือ (โดยเฉพาะ iOS) เรนเดอร์
-         ให้แถบนี้เลื่อนตามเนื้อหาระหว่างสกอลล์ก่อนจะ snap กลับที่เดิม โดยบังคับให้เป็น
-         compositing layer แยกของตัวเอง */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 flex transform-gpu border-t border-neutral-200 bg-white pb-[env(safe-area-inset-bottom)] will-change-transform md:hidden">
-        {visibleItems.map((item) => {
-          const active = pathname === item.href;
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium ${
-                active ? "text-brand-600" : "text-neutral-500"
-              }`}
-            >
-              <Icon className="h-5 w-5 shrink-0" strokeWidth={2} />
-              <span className="w-full truncate text-center">{item.label}</span>
-            </Link>
-          );
-        })}
-        <button
-          onClick={handleLogout}
-          className="flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium text-neutral-500"
-        >
-          <LogOut className="h-5 w-5 shrink-0" strokeWidth={2} />
-          <span className="w-full truncate text-center">ออก</span>
-        </button>
-      </nav>
+        {/* Bottom nav สำหรับมือถือ */}
+        <nav className="flex shrink-0 border-t border-neutral-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
+          {visibleItems.map((item) => {
+            const active = pathname === item.href;
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium ${
+                  active ? "text-brand-600" : "text-neutral-500"
+                }`}
+              >
+                <Icon className="h-5 w-5 shrink-0" strokeWidth={2} />
+                <span className="w-full truncate text-center">{item.label}</span>
+              </Link>
+            );
+          })}
+          <button
+            onClick={handleLogout}
+            className="flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium text-neutral-500"
+          >
+            <LogOut className="h-5 w-5 shrink-0" strokeWidth={2} />
+            <span className="w-full truncate text-center">ออก</span>
+          </button>
+        </nav>
+      </div>
     </div>
   );
 }
