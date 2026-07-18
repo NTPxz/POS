@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Bell, Receipt, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/components/ProfileProvider";
+import { useTableAlert } from "@/components/TableAlertProvider";
 
 type Toast = {
   id: string;
@@ -43,8 +43,8 @@ const NOTE_GAIN_PEAK = 0.65;
 
 export default function OrderNotifications() {
   const supabase = useMemo(() => createClient(), []);
-  const router = useRouter();
   const { profile } = useProfile();
+  const { triggerAlert, goToTables } = useTableAlert();
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -104,12 +104,16 @@ export default function OrderNotifications() {
     }
   }, []);
 
-  const pushToast = useCallback((toast: Toast) => {
-    setToasts((prev) => [...prev, toast]);
-    window.setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== toast.id));
-    }, TOAST_MS);
-  }, []);
+  const pushToast = useCallback(
+    (toast: Toast) => {
+      setToasts((prev) => [...prev, toast]);
+      triggerAlert();
+      window.setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== toast.id));
+      }, TOAST_MS);
+    },
+    [triggerAlert]
+  );
 
   const resolveTableName = useCallback(
     async (saleId: string) => {
@@ -219,7 +223,7 @@ export default function OrderNotifications() {
           </div>
           <button
             className="min-w-0 flex-1 text-left"
-            onClick={() => router.push("/")}
+            onClick={() => goToTables()}
           >
             <p className={`font-semibold ${t.tone === "bill" ? "text-amber-800" : "text-neutral-800"}`}>
               {t.title}

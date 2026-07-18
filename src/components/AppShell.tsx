@@ -20,6 +20,7 @@ import { hasRole, Role, ROLE_LABELS } from "@/lib/types";
 import OrderNotifications from "@/components/OrderNotifications";
 import PushSetup from "@/components/PushSetup";
 import { useWakeLock } from "@/lib/useWakeLock";
+import { useTableAlert } from "@/components/TableAlertProvider";
 
 const NAV_ITEMS: {
   href: string;
@@ -43,6 +44,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { profile } = useProfile();
   const role = profile?.role ?? "staff";
   const visibleItems = NAV_ITEMS.filter((item) => hasRole(role, item.minRole));
+  const { alert, goToTables } = useTableAlert();
 
   useWakeLock(!!profile);
 
@@ -81,17 +83,29 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {visibleItems.map((item) => {
             const active = pathname === item.href;
             const Icon = item.icon;
+            const showAlert = item.href === "/" && alert;
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={(e) => {
+                  if (showAlert) {
+                    e.preventDefault();
+                    goToTables();
+                  }
+                }}
                 className={`flex items-center gap-3 rounded-xl px-4 py-3 font-medium transition ${
                   active
                     ? "bg-brand-50 text-brand-700"
                     : "text-neutral-600 hover:bg-neutral-50"
                 }`}
               >
-                <Icon className="h-5 w-5" strokeWidth={2} />
+                <span className="relative">
+                  <Icon className="h-5 w-5" strokeWidth={2} />
+                  {showAlert && (
+                    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 animate-pulse rounded-full bg-red-500 ring-2 ring-white" />
+                  )}
+                </span>
                 {item.label}
               </Link>
             );
@@ -123,15 +137,27 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {visibleItems.map((item) => {
             const active = pathname === item.href;
             const Icon = item.icon;
+            const showAlert = item.href === "/" && alert;
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={(e) => {
+                  if (showAlert) {
+                    e.preventDefault();
+                    goToTables();
+                  }
+                }}
                 className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium ${
                   active ? "text-brand-600" : "text-neutral-500"
                 }`}
               >
-                <Icon className="h-5 w-5 shrink-0" strokeWidth={2} />
+                <span className="relative">
+                  <Icon className="h-5 w-5 shrink-0" strokeWidth={2} />
+                  {showAlert && (
+                    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 animate-pulse rounded-full bg-red-500 ring-2 ring-white" />
+                  )}
+                </span>
                 <span className="w-full truncate text-center">{item.label}</span>
               </Link>
             );

@@ -6,16 +6,29 @@ import { createClient } from "@/lib/supabase/client";
 import { Category, Product } from "@/lib/types";
 import QuickSaleView from "@/components/pos/QuickSaleView";
 import TablesView from "@/components/pos/TablesView";
+import { useTableAlert } from "@/components/TableAlertProvider";
 
 type Mode = "quick" | "tables";
 
 export default function PosPage() {
   const supabase = useMemo(() => createClient(), []);
+  const { clearAlert, focusTables, consumeFocusTables } = useTableAlert();
   const [mode, setMode] = useState<Mode>("quick");
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (focusTables) {
+      setMode("tables");
+      consumeFocusTables();
+    }
+  }, [focusTables, consumeFocusTables]);
+
+  useEffect(() => {
+    if (mode === "tables") clearAlert();
+  }, [mode, clearAlert]);
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);

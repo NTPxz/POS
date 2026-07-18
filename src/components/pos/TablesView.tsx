@@ -49,8 +49,8 @@ export default function TablesView({
   const [activeTableId, setActiveTableId] = useState<string | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
 
-  const loadTables = useCallback(async () => {
-    setLoading(true);
+  const loadTables = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setLoadError(null);
     try {
       const [tablesRes, salesRes] = await Promise.all([
@@ -84,6 +84,20 @@ export default function TablesView({
     loadTables();
   }, [loadTables]);
 
+  // ฟังการเปลี่ยนแปลงบิลแบบ real time (ลูกค้าสั่งของ/เรียกเก็บเงิน หรือพนักงานเครื่องอื่นแก้บิล)
+  // จะได้เห็นป้าย "เรียกเก็บเงิน" ขึ้นเองโดยไม่ต้องออกจากหน้านี้แล้วกลับเข้ามาใหม่
+  useEffect(() => {
+    const channel = supabase
+      .channel("tables-grid-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "sales" }, () => {
+        loadTables(true);
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, loadTables]);
+
   const activeTable = tables.find((t) => t.id === activeTableId) ?? null;
   const activeSale = activeTableId ? openSales.get(activeTableId) ?? null : null;
 
@@ -96,7 +110,7 @@ export default function TablesView({
         categories={categories}
         onBack={() => setActiveTableId(null)}
         onChanged={() => {
-          loadTables();
+          loadTables(true);
           onProductsChanged();
         }}
       />
@@ -126,7 +140,7 @@ export default function TablesView({
           <p className="mb-3 text-sm">โหลดข้อมูลไม่สำเร็จ: {loadError}</p>
           <button
             className="btn-secondary inline-flex items-center gap-2"
-            onClick={loadTables}
+            onClick={() => loadTables()}
           >
             <RefreshCw className="h-4 w-4" strokeWidth={2} />
             ลองอีกครั้ง
