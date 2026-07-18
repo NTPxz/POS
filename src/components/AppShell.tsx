@@ -17,6 +17,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/components/ProfileProvider";
 import { hasRole, Role, ROLE_LABELS } from "@/lib/types";
+import OrderNotifications from "@/components/OrderNotifications";
 
 const NAV_ITEMS: {
   href: string;
@@ -50,6 +51,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-dvh">
+      <OrderNotifications />
       {/* Sidebar สำหรับจอใหญ่ (iPad แนวนอน / PC) */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-neutral-200 bg-white md:flex">
         <div className="flex items-center gap-2.5 px-5 py-5">

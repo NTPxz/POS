@@ -53,6 +53,7 @@ export type SaleItem = {
   cost: number;
   quantity: number;
   total: number;
+  ordered_by: "staff" | "customer";
   created_at: string;
 };
 

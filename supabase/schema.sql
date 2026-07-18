@@ -62,6 +62,7 @@ create table if not exists public.sale_items (
   cost numeric(12, 2) not null default 0,
   quantity numeric(12, 2) not null,
   total numeric(12, 2) not null,
+  ordered_by text not null default 'staff' check (ordered_by in ('staff', 'customer')),
   created_at timestamptz not null default now()
 );
 
@@ -912,8 +913,8 @@ begin
     v_round_total := v_round_total + v_line_total;
     v_round_count := v_round_count + v_qty;
 
-    insert into sale_items (sale_id, product_id, product_name, price, cost, quantity, total)
-    values (v_sale_id, v_product.id, v_product.name, v_product.price, v_product.cost, v_qty, v_line_total);
+    insert into sale_items (sale_id, product_id, product_name, price, cost, quantity, total, ordered_by)
+    values (v_sale_id, v_product.id, v_product.name, v_product.price, v_product.cost, v_qty, v_line_total, 'customer');
 
     if v_product.track_stock then
       update products set stock = stock - v_qty, updated_at = now() where id = v_product.id;
@@ -996,3 +997,10 @@ revoke execute on function public.request_checkout from public;
 grant execute on function public.customer_add_order to anon, authenticated;
 grant execute on function public.get_table_order to anon, authenticated;
 grant execute on function public.request_checkout to anon, authenticated;
+
+-- ============================================================
+-- แจ้งเตือนพนักงานแบบ real time เมื่อลูกค้าสั่งอาหาร / กดเรียกเก็บเงิน
+-- (ฝั่ง frontend subscribe ผ่าน supabase realtime บนตาราง sales/sale_items)
+-- ============================================================
+alter publication supabase_realtime add table public.sales;
+alter publication supabase_realtime add table public.sale_items;
