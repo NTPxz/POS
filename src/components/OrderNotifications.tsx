@@ -13,24 +13,33 @@ type Toast = {
   message: string;
 };
 
-const TOAST_MS = 8000;
+const TOAST_MS = 11000;
 const BATCH_MS = 900;
 
-// ทำนองแจ้งเตือน — วนซ้ำหลายรอบให้ยาวและได้ยินชัดในร้านที่มีเสียงดัง
+// ทำนองแจ้งเตือน — เพลงสั้นๆ วนซ้ำจนยาวรวม ~10 วิ ให้ได้ยินชัดในร้านที่มีเสียงดัง
 const ORDER_NOTES = [
-  { freq: 523.25, dur: 0.16 }, // C5
-  { freq: 659.25, dur: 0.16 }, // E5
-  { freq: 783.99, dur: 0.16 }, // G5
-  { freq: 1046.5, dur: 0.34 }, // C6
+  { freq: 523.25, dur: 0.24 }, // C5
+  { freq: 659.25, dur: 0.24 }, // E5
+  { freq: 783.99, dur: 0.24 }, // G5
+  { freq: 1046.5, dur: 0.24 }, // C6
+  { freq: 783.99, dur: 0.24 }, // G5
+  { freq: 659.25, dur: 0.24 }, // E5
+  { freq: 783.99, dur: 0.24 }, // G5
+  { freq: 1046.5, dur: 0.5 }, // C6 (โน้ตยาวปิดท้าย)
 ];
 const BILL_NOTES = [
-  { freq: 880, dur: 0.18 },
-  { freq: 659.25, dur: 0.18 },
-  { freq: 880, dur: 0.18 },
-  { freq: 659.25, dur: 0.36 },
+  { freq: 880, dur: 0.23 },
+  { freq: 659.25, dur: 0.23 },
+  { freq: 880, dur: 0.23 },
+  { freq: 659.25, dur: 0.23 },
+  { freq: 880, dur: 0.23 },
+  { freq: 659.25, dur: 0.23 },
+  { freq: 880, dur: 0.23 },
+  { freq: 659.25, dur: 0.5 },
 ];
 const MELODY_REPEATS = 4;
-const NOTE_GAIN_PEAK = 0.55;
+const CYCLE_GAP = 0.3;
+const NOTE_GAIN_PEAK = 0.65;
 
 export default function OrderNotifications() {
   const supabase = useMemo(() => createClient(), []);
@@ -70,11 +79,10 @@ export default function OrderNotifications() {
 
       const notes = tone === "bill" ? BILL_NOTES : ORDER_NOTES;
       const cycleDur = notes.reduce((sum, n) => sum + n.dur, 0) + 0.02 * notes.length;
-      const cycleGap = 0.18;
 
       const now = ctx.currentTime;
       for (let rep = 0; rep < MELODY_REPEATS; rep++) {
-        let t = now + rep * (cycleDur + cycleGap);
+        let t = now + rep * (cycleDur + CYCLE_GAP);
         for (const note of notes) {
           const start = t;
           const osc = ctx.createOscillator();
