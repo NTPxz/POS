@@ -3,15 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Receipt } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { baht, billNumber, formatDateTime, formatNumber } from "@/lib/format";
+import {
+  baht,
+  billNumber,
+  formatDateTime,
+  formatNumber,
+  toDateInput,
+} from "@/lib/format";
 import { PAYMENT_LABELS, SaleWithItems } from "@/lib/types";
-
-function toDateInput(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
 
 export default function SalesPage() {
   const supabase = useMemo(() => createClient(), []);

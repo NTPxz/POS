@@ -8,8 +8,14 @@ import {
   Smartphone,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { baht, formatNumber, startOfDayISO, daysAgo } from "@/lib/format";
-import { PAYMENT_LABELS, PaymentMethod, Product, SaleWithItems } from "@/lib/types";
+import { baht, formatNumber, daysAgo, toDateInput } from "@/lib/format";
+import {
+  ExpenseWithCategory,
+  PAYMENT_LABELS,
+  PaymentMethod,
+  Product,
+  SaleWithItems,
+} from "@/lib/types";
 
 const PAYMENT_ICONS: Record<PaymentMethod, typeof Banknote> = {
   cash: Banknote,
@@ -44,19 +50,28 @@ export default function DashboardPage() {
   const supabase = useMemo(() => createClient(), []);
   const [period, setPeriod] = useState<Period>("today");
   const [sales, setSales] = useState<SaleWithItems[]>([]);
+  const [expenses, setExpenses] = useState<ExpenseWithCategory[]>([]);
   const [lowStock, setLowStock] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const fromISO = startOfDayISO(periodStart(period));
-    const [salesRes, lowRes] = await Promise.all([
+    const start = periodStart(period);
+    start.setHours(0, 0, 0, 0);
+    const fromISO = start.toISOString();
+    const fromDate = toDateInput(start);
+    const [salesRes, expensesRes, lowRes] = await Promise.all([
       supabase
         .from("sales")
         .select("*, sale_items(*)")
         .eq("status", "completed")
         .gte("created_at", fromISO)
         .order("created_at"),
+      supabase
+        .from("expenses")
+        .select("*, expense_categories(name)")
+        .gte("expense_date", fromDate)
+        .order("expense_date"),
       supabase
         .from("products")
         .select("*")
@@ -65,6 +80,7 @@ export default function DashboardPage() {
         .order("stock"),
     ]);
     setSales((salesRes.data as SaleWithItems[]) ?? []);
+    setExpenses((expensesRes.data as ExpenseWithCategory[]) ?? []);
     const products = (lowRes.data as Product[]) ?? [];
     setLowStock(products.filter((p) => p.stock <= p.low_stock_threshold));
     setLoading(false);
@@ -76,9 +92,21 @@ export default function DashboardPage() {
 
   const revenue = sales.reduce((s, x) => s + Number(x.total), 0);
   const cost = sales.reduce((s, x) => s + Number(x.cost_total), 0);
-  const profit = revenue - cost;
+  const grossProfit = revenue - cost;
+  const expenseTotal = expenses.reduce((s, e) => s + Number(e.amount), 0);
+  const netProfit = grossProfit - expenseTotal;
   const billCount = sales.length;
   const avgPerBill = billCount > 0 ? revenue / billCount : 0;
+
+  // รายจ่ายแยกตามหมวดหมู่
+  const byExpenseCategory = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const e of expenses) {
+      const name = e.expense_categories?.name ?? "ไม่ระบุหมวดหมู่";
+      map.set(name, (map.get(name) ?? 0) + Number(e.amount));
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1]);
+  }, [expenses]);
 
   // ยอดขายรายวันสำหรับกราฟ
   const dailyData = useMemo(() => {
@@ -154,10 +182,24 @@ export default function DashboardPage() {
       ) : (
         <div className="space-y-4">
           {/* ตัวเลขสรุป */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
             <StatCard label="ยอดขาย" value={baht(revenue)} accent="text-blue-600" />
             <StatCard label="ต้นทุนสินค้า" value={baht(cost)} accent="text-slate-700" />
-            <StatCard label="กำไร" value={baht(profit)} accent="text-green-600" />
+            <StatCard
+              label="กำไรขั้นต้น"
+              value={baht(grossProfit)}
+              accent="text-teal-600"
+            />
+            <StatCard
+              label="รายจ่ายอื่นๆ"
+              value={baht(expenseTotal)}
+              accent="text-red-600"
+            />
+            <StatCard
+              label="กำไรสุทธิ"
+              value={baht(netProfit)}
+              accent={netProfit >= 0 ? "text-green-600" : "text-red-600"}
+            />
             <StatCard
               label={`จำนวนบิล (เฉลี่ย ${baht(avgPerBill)}/บิล)`}
               value={formatNumber(billCount)}
@@ -255,6 +297,29 @@ export default function DashboardPage() {
                         </li>
                       );
                     })}
+                  </ul>
+                )}
+              </div>
+
+              {/* รายจ่ายตามหมวดหมู่ */}
+              <div className="card p-4 md:p-5">
+                <h2 className="mb-3 font-bold">รายจ่ายตามหมวดหมู่</h2>
+                {byExpenseCategory.length === 0 ? (
+                  <p className="py-4 text-center text-sm text-slate-400">
+                    ยังไม่มีรายจ่ายในช่วงนี้
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {byExpenseCategory.map(([name, amount]) => (
+                      <li key={name} className="flex items-center justify-between">
+                        <span className="truncate text-sm text-slate-600">
+                          {name}
+                        </span>
+                        <span className="ml-2 shrink-0 font-semibold text-red-600">
+                          {baht(amount)}
+                        </span>
+                      </li>
+                    ))}
                   </ul>
                 )}
               </div>

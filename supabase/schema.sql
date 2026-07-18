@@ -206,6 +206,57 @@ grant execute on function public.create_sale to authenticated;
 grant execute on function public.void_sale to authenticated;
 
 -- ============================================================
+-- รายจ่าย / ต้นทุน (ต้นทุนเริ่มต้น, วัตถุดิบ, ค่าเช่า, เงินเดือน ฯลฯ)
+-- แยกจากต้นทุนสินค้า (products.cost) ซึ่งเป็นต้นทุนต่อชิ้นที่ขาย
+-- ใช้คำนวณ "กำไรสุทธิ" ใน Dashboard ร่วมกับกำไรขั้นต้นจากยอดขาย
+-- ============================================================
+
+-- หมวดหมู่รายจ่าย
+create table if not exists public.expense_categories (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  position int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+-- รายจ่าย
+create table if not exists public.expenses (
+  id uuid primary key default gen_random_uuid(),
+  category_id uuid references public.expense_categories (id) on delete set null,
+  title text not null,
+  amount numeric(12, 2) not null default 0,
+  expense_date date not null default current_date,
+  note text,
+  user_id uuid references auth.users (id),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_expenses_date on public.expenses (expense_date);
+create index if not exists idx_expenses_category on public.expenses (category_id);
+
+alter table public.expense_categories enable row level security;
+alter table public.expenses enable row level security;
+
+drop policy if exists "authenticated full access" on public.expense_categories;
+create policy "authenticated full access" on public.expense_categories
+  for all to authenticated using (true) with check (true);
+
+drop policy if exists "authenticated full access" on public.expenses;
+create policy "authenticated full access" on public.expenses
+  for all to authenticated using (true) with check (true);
+
+insert into public.expense_categories (name, position) values
+  ('ต้นทุนเริ่มต้น/เงินลงทุน', 1),
+  ('วัตถุดิบ', 2),
+  ('ค่าเช่าร้าน', 3),
+  ('ค่าน้ำ-ค่าไฟ', 4),
+  ('เงินเดือน/ค่าแรง', 5),
+  ('ค่าขนส่ง', 6),
+  ('การตลาด/โฆษณา', 7),
+  ('อื่นๆ', 8)
+on conflict (name) do nothing;
+
+-- ============================================================
 -- ข้อมูลตัวอย่าง (ลบส่วนนี้ออกได้ถ้าไม่ต้องการ)
 -- ============================================================
 insert into public.categories (name, position) values

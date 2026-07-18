@@ -8,6 +8,7 @@ import {
   Package,
   Receipt,
   ShoppingCart,
+  Wallet,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -15,6 +16,7 @@ const NAV_ITEMS = [
   { href: "/", label: "ขายสินค้า", icon: ShoppingCart },
   { href: "/dashboard", label: "ภาพรวม", icon: LayoutDashboard },
   { href: "/sales", label: "ประวัติขาย", icon: Receipt },
+  { href: "/expenses", label: "รายจ่าย", icon: Wallet },
   { href: "/products", label: "สินค้า", icon: Package },
 ];
 

@@ -64,3 +64,25 @@ export const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   transfer: "โอนเงิน",
   card: "บัตร",
 };
+
+export type ExpenseCategory = {
+  id: string;
+  name: string;
+  position: number;
+  created_at: string;
+};
+
+export type Expense = {
+  id: string;
+  category_id: string | null;
+  title: string;
+  amount: number;
+  expense_date: string;
+  note: string | null;
+  user_id: string | null;
+  created_at: string;
+};
+
+export type ExpenseWithCategory = Expense & {
+  expense_categories: { name: string } | null;
+};
