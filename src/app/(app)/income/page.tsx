@@ -3,15 +3,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  CheckCircle2,
   Plus,
   RefreshCw,
+  ShoppingCart,
   Tag,
   TrendingUp,
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { baht, formatDate, formatNumber, toDateInput } from "@/lib/format";
-import { Income, IncomeCategory, IncomeWithCategory } from "@/lib/types";
+import {
+  Income,
+  IncomeCategory,
+  IncomeWithCategory,
+  PAYMENT_LABELS,
+  PaymentMethod,
+} from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
 
 function startOfMonthInput(): string {
@@ -39,6 +47,8 @@ function IncomePageContent() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<IncomeWithCategory | null>(null);
   const [catModalOpen, setCatModalOpen] = useState(false);
+  const [saleModalOpen, setSaleModalOpen] = useState(false);
+  const [saleSavedMsg, setSaleSavedMsg] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
 
@@ -141,6 +151,13 @@ function IncomePageContent() {
             หมวดหมู่
           </button>
           <button
+            className="btn-secondary inline-flex items-center gap-2"
+            onClick={() => setSaleModalOpen(true)}
+          >
+            <ShoppingCart className="h-4 w-4" strokeWidth={2} />
+            บันทึกยอดขายเอง
+          </button>
+          <button
             className="btn-primary inline-flex items-center gap-2"
             onClick={openAdd}
           >
@@ -152,8 +169,23 @@ function IncomePageContent() {
 
       <p className="mb-4 text-sm text-neutral-500">
         สำหรับรายได้อื่นนอกเหนือจากยอดขายหน้าร้าน (ซึ่งระบบนับให้อัตโนมัติแล้วในหน้า
-        “ภาพรวม”) เช่น เงินลงทุนเพิ่ม หรือรายได้ค่าบริการ
+        “ภาพรวม”) เช่น เงินลงทุนเพิ่ม หรือรายได้ค่าบริการ — หากมีการขายนอกระบบ POS
+        (เช่น ขายผ่านโทรศัพท์/แอปส่งของ) ให้กด “บันทึกยอดขายเอง” แทน จะถูกนับรวม
+        เป็นยอดขายจริงในหน้าภาพรวมและประวัติการขาย
       </p>
+
+      {saleSavedMsg && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">
+          <CheckCircle2 className="h-4 w-4 shrink-0" strokeWidth={2} />
+          {saleSavedMsg}
+          <button
+            className="ml-auto text-green-600 hover:text-green-800"
+            onClick={() => setSaleSavedMsg(null)}
+          >
+            <X className="h-4 w-4" strokeWidth={2} />
+          </button>
+        </div>
+      )}
 
       {/* ค้นหาและกรองตามหมวดหมู่ */}
       <div className="mb-4 space-y-3">
@@ -347,6 +379,16 @@ function IncomePageContent() {
           onChanged={loadData}
         />
       )}
+
+      {saleModalOpen && (
+        <ManualSaleModal
+          onClose={() => setSaleModalOpen(false)}
+          onSaved={(total) => {
+            setSaleModalOpen(false);
+            setSaleSavedMsg(`บันทึกยอดขาย ${baht(total)} เรียบร้อยแล้ว`);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -508,6 +550,177 @@ function IncomeModal({
           </button>
           <button type="submit" className="btn-primary flex-1" disabled={saving}>
             {saving ? "กำลังบันทึก..." : "บันทึก"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+type ManualSaleForm = {
+  amount: string;
+  cost: string;
+  sale_date: string;
+  payment_method: PaymentMethod;
+  note: string;
+};
+
+function ManualSaleModal({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void;
+  onSaved: (total: number) => void;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const [form, setForm] = useState<ManualSaleForm>({
+    amount: "",
+    cost: "",
+    sale_date: toDateInput(new Date()),
+    payment_method: "cash",
+    note: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const set = (patch: Partial<ManualSaleForm>) =>
+    setForm((f) => ({ ...f, ...patch }));
+
+  const amount = parseFloat(form.amount) || 0;
+  const cost = parseFloat(form.cost) || 0;
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { error } = await supabase.from("sales").insert({
+      subtotal: amount,
+      discount: 0,
+      total: amount,
+      cost_total: cost,
+      payment_method: form.payment_method,
+      note: form.note.trim() || null,
+      status: "completed",
+      user_id: user?.id ?? null,
+      created_at: new Date(`${form.sale_date}T12:00:00`).toISOString(),
+    });
+    if (error) {
+      setError(`บันทึกไม่สำเร็จ: ${error.message}`);
+      setSaving(false);
+      return;
+    }
+    onSaved(amount);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+      <form
+        onSubmit={save}
+        className="flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl"
+      >
+        <div className="flex items-center justify-between px-6 pt-5">
+          <h2 className="text-xl font-bold">บันทึกยอดขายเอง</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-2 text-neutral-400 hover:bg-neutral-100"
+          >
+            <X className="h-5 w-5" strokeWidth={2} />
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
+          <p className="rounded-xl bg-neutral-50 px-4 py-2.5 text-sm text-neutral-500">
+            สำหรับยอดขายที่เกิดนอกระบบ POS เช่น ขายผ่านโทรศัพท์หรือแอปส่งของ
+            จะถูกนับรวมเป็นยอดขายจริงในหน้าภาพรวมและประวัติการขาย
+          </p>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="ยอดขาย (บาท) *">
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="any"
+                className="input"
+                value={form.amount}
+                onChange={(e) => set({ amount: e.target.value })}
+                required
+                autoFocus
+              />
+            </Field>
+            <Field label="ต้นทุน (บาท)">
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="any"
+                className="input"
+                value={form.cost}
+                onChange={(e) => set({ cost: e.target.value })}
+                placeholder="0"
+              />
+            </Field>
+          </div>
+
+          {amount > 0 && (
+            <p className="rounded-xl bg-green-50 px-4 py-2.5 text-sm text-green-700">
+              กำไร: <b>{baht(amount - cost)}</b>
+            </p>
+          )}
+
+          <Field label="วันที่ขาย *">
+            <input
+              type="date"
+              className="input"
+              value={form.sale_date}
+              max={toDateInput(new Date())}
+              onChange={(e) => set({ sale_date: e.target.value })}
+              required
+            />
+          </Field>
+
+          <Field label="วิธีชำระเงิน">
+            <select
+              className="input"
+              value={form.payment_method}
+              onChange={(e) =>
+                set({ payment_method: e.target.value as PaymentMethod })
+              }
+            >
+              {(Object.keys(PAYMENT_LABELS) as PaymentMethod[]).map((m) => (
+                <option key={m} value={m}>
+                  {PAYMENT_LABELS[m]}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="หมายเหตุ">
+            <input
+              className="input"
+              value={form.note}
+              onChange={(e) => set({ note: e.target.value })}
+              placeholder="เช่น ขายผ่าน Line, โทรสั่งของ"
+            />
+          </Field>
+
+          {error && (
+            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+              {error}
+            </p>
+          )}
+        </div>
+
+        <div className="flex gap-2 border-t border-neutral-200 p-4 px-6">
+          <button type="button" className="btn-secondary flex-1" onClick={onClose}>
+            ยกเลิก
+          </button>
+          <button type="submit" className="btn-primary flex-1" disabled={saving}>
+            {saving ? "กำลังบันทึก..." : "บันทึกยอดขาย"}
           </button>
         </div>
       </form>
