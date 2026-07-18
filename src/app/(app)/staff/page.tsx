@@ -8,6 +8,7 @@ import {
   Phone,
   Plus,
   RefreshCw,
+  UserRound,
   Users,
   X,
 } from "lucide-react";
@@ -107,6 +108,23 @@ function StaffPageContent() {
     if (p.id === me?.id) refreshMe();
   }
 
+  async function saveFullName(p: Profile, fullName: string) {
+    const trimmed = fullName.trim();
+    if (trimmed === (p.full_name ?? "")) return;
+    setSavingId(p.id);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ full_name: trimmed || null, updated_at: new Date().toISOString() })
+      .eq("id", p.id);
+    setSavingId(null);
+    if (error) {
+      window.alert(`บันทึกชื่อพนักงานไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    await loadData();
+    if (p.id === me?.id) refreshMe();
+  }
+
   return (
     <div className="flex-1 p-4 md:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -155,6 +173,7 @@ function StaffPageContent() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-neutral-200 text-left text-neutral-500">
+                  <th className="px-4 py-3 font-medium">ชื่อพนักงาน</th>
                   <th className="px-4 py-3 font-medium">อีเมล</th>
                   <th className="px-4 py-3 font-medium">เบอร์โทร</th>
                   <th className="px-4 py-3 font-medium">เข้าร่วมเมื่อ</th>
@@ -169,11 +188,16 @@ function StaffPageContent() {
                     className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
                   >
                     <td className="px-4 py-3">
-                      <p className="font-medium">{p.email ?? "-"}</p>
+                      <NameInput
+                        value={p.full_name}
+                        disabled={savingId === p.id}
+                        onSave={(name) => saveFullName(p, name)}
+                      />
                       {p.id === me?.id && (
                         <p className="text-xs text-brand-600">คุณ</p>
                       )}
                     </td>
+                    <td className="px-4 py-3 text-neutral-500">{p.email ?? "-"}</td>
                     <td className="px-4 py-3">
                       <PhoneInput
                         value={p.phone}
@@ -211,17 +235,23 @@ function StaffPageContent() {
             {staff.map((p) => (
               <div key={p.id} className="card p-4">
                 <p className="font-semibold">
-                  {p.email ?? "-"}
+                  {p.full_name || "ยังไม่ระบุชื่อ"}
                   {p.id === me?.id && (
                     <span className="ml-2 text-xs font-normal text-brand-600">
                       (คุณ)
                     </span>
                   )}
                 </p>
+                <p className="text-xs text-neutral-500">{p.email ?? "-"}</p>
                 <p className="mb-3 text-xs text-neutral-400">
                   เข้าร่วมเมื่อ {formatDate(p.created_at)}
                 </p>
                 <div className="space-y-2">
+                  <NameInput
+                    value={p.full_name}
+                    disabled={savingId === p.id}
+                    onSave={(name) => saveFullName(p, name)}
+                  />
                   <PhoneInput
                     value={p.phone}
                     disabled={savingId === p.id}
@@ -262,6 +292,40 @@ function StaffPageContent() {
           onClose={() => setResetTarget(null)}
         />
       )}
+    </div>
+  );
+}
+
+function NameInput({
+  value,
+  disabled,
+  onSave,
+}: {
+  value: string | null;
+  disabled: boolean;
+  onSave: (name: string) => void;
+}) {
+  const [text, setText] = useState(value ?? "");
+
+  useEffect(() => {
+    setText(value ?? "");
+  }, [value]);
+
+  return (
+    <div className="relative w-full max-w-[220px]">
+      <UserRound
+        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
+        strokeWidth={2}
+      />
+      <input
+        type="text"
+        className="input py-2 pl-9"
+        placeholder="ยังไม่ระบุชื่อ"
+        value={text}
+        disabled={disabled}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => onSave(text)}
+      />
     </div>
   );
 }
