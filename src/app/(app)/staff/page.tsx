@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, Info, RefreshCw, Users } from "lucide-react";
+import { AlertCircle, Info, Phone, RefreshCw, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/format";
 import { Profile, Role, ROLE_LABELS } from "@/lib/types";
@@ -79,6 +79,23 @@ function StaffPageContent() {
     if (p.id === me?.id) refreshMe();
   }
 
+  async function savePhone(p: Profile, phone: string) {
+    const trimmed = phone.trim();
+    if (trimmed === (p.phone ?? "")) return;
+    setSavingId(p.id);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ phone: trimmed || null, updated_at: new Date().toISOString() })
+      .eq("id", p.id);
+    setSavingId(null);
+    if (error) {
+      window.alert(`บันทึกเบอร์โทรไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    await loadData();
+    if (p.id === me?.id) refreshMe();
+  }
+
   return (
     <div className="flex-1 p-4 md:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -122,6 +139,7 @@ function StaffPageContent() {
               <thead>
                 <tr className="border-b border-neutral-200 text-left text-neutral-500">
                   <th className="px-4 py-3 font-medium">อีเมล</th>
+                  <th className="px-4 py-3 font-medium">เบอร์โทร</th>
                   <th className="px-4 py-3 font-medium">เข้าร่วมเมื่อ</th>
                   <th className="px-4 py-3 font-medium">สิทธิ์การใช้งาน</th>
                 </tr>
@@ -137,6 +155,13 @@ function StaffPageContent() {
                       {p.id === me?.id && (
                         <p className="text-xs text-brand-600">คุณ</p>
                       )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <PhoneInput
+                        value={p.phone}
+                        disabled={savingId === p.id}
+                        onSave={(phone) => savePhone(p, phone)}
+                      />
                     </td>
                     <td className="px-4 py-3 text-neutral-500">
                       {formatDate(p.created_at)}
@@ -169,16 +194,57 @@ function StaffPageContent() {
                 <p className="mb-3 text-xs text-neutral-400">
                   เข้าร่วมเมื่อ {formatDate(p.created_at)}
                 </p>
-                <RoleSelect
-                  value={p.role}
-                  disabled={savingId === p.id}
-                  onChange={(role) => changeRole(p, role)}
-                />
+                <div className="space-y-2">
+                  <PhoneInput
+                    value={p.phone}
+                    disabled={savingId === p.id}
+                    onSave={(phone) => savePhone(p, phone)}
+                  />
+                  <RoleSelect
+                    value={p.role}
+                    disabled={savingId === p.id}
+                    onChange={(role) => changeRole(p, role)}
+                  />
+                </div>
               </div>
             ))}
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function PhoneInput({
+  value,
+  disabled,
+  onSave,
+}: {
+  value: string | null;
+  disabled: boolean;
+  onSave: (phone: string) => void;
+}) {
+  const [text, setText] = useState(value ?? "");
+
+  useEffect(() => {
+    setText(value ?? "");
+  }, [value]);
+
+  return (
+    <div className="relative w-full max-w-[220px]">
+      <Phone
+        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
+        strokeWidth={2}
+      />
+      <input
+        type="tel"
+        className="input py-2 pl-9"
+        placeholder="ยังไม่ระบุ"
+        value={text}
+        disabled={disabled}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => onSave(text)}
+      />
     </div>
   );
 }
