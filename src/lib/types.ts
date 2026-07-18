@@ -17,6 +17,7 @@ export type Product = {
   low_stock_threshold: number;
   image_url: string | null;
   is_active: boolean;
+  is_sold_out: boolean;
   created_at: string;
   updated_at: string;
 };

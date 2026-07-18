@@ -24,6 +24,7 @@ create table if not exists public.products (
   low_stock_threshold numeric(12, 2) not null default 5,
   image_url text,
   is_active boolean not null default true,
+  is_sold_out boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -848,7 +849,7 @@ select
   0::numeric(12, 2) as cost,
   stock, track_stock, low_stock_threshold, image_url, is_active, created_at, updated_at
 from public.products
-where is_active = true;
+where is_active = true and is_sold_out = false;
 
 grant select on public.public_menu to anon, authenticated;
 

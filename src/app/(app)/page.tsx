@@ -26,6 +26,7 @@ export default function PosPage() {
           .from("products")
           .select("*")
           .eq("is_active", true)
+          .eq("is_sold_out", false)
           .order("name"),
         supabase.from("categories").select("*").order("position"),
       ]);

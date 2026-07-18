@@ -59,6 +59,7 @@ function ProductsPageContent() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [catModalOpen, setCatModalOpen] = useState(false);
+  const [savingSoldOutId, setSavingSoldOutId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -115,6 +116,22 @@ function ProductsPageContent() {
       return;
     await supabase.from("products").update({ is_active: false }).eq("id", p.id);
     loadData();
+  }
+
+  async function toggleSoldOut(p: Product, soldOut: boolean) {
+    setSavingSoldOutId(p.id);
+    setProducts((prev) =>
+      prev.map((item) => (item.id === p.id ? { ...item, is_sold_out: soldOut } : item))
+    );
+    const { error } = await supabase
+      .from("products")
+      .update({ is_sold_out: soldOut, updated_at: new Date().toISOString() })
+      .eq("id", p.id);
+    setSavingSoldOutId(null);
+    if (error) {
+      window.alert(`บันทึกไม่สำเร็จ: ${error.message}`);
+      loadData();
+    }
   }
 
   return (
@@ -178,6 +195,7 @@ function ProductsPageContent() {
                   <th className="px-4 py-3 text-right font-medium">ต้นทุน</th>
                   <th className="px-4 py-3 text-right font-medium">กำไร/ชิ้น</th>
                   <th className="px-4 py-3 text-right font-medium">คงเหลือ</th>
+                  <th className="px-4 py-3 text-center font-medium">ของหมด</th>
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
@@ -187,10 +205,19 @@ function ProductsPageContent() {
                   return (
                     <tr
                       key={p.id}
-                      className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
+                      className={`border-b border-neutral-100 last:border-0 hover:bg-neutral-50 ${
+                        p.is_sold_out ? "opacity-60" : ""
+                      }`}
                     >
                       <td className="px-4 py-3">
-                        <p className="font-medium">{p.name}</p>
+                        <p className="font-medium">
+                          {p.name}
+                          {p.is_sold_out && (
+                            <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-semibold text-neutral-500">
+                              ของหมด
+                            </span>
+                          )}
+                        </p>
                         {p.barcode && (
                           <p className="text-xs text-neutral-400">{p.barcode}</p>
                         )}
@@ -230,6 +257,15 @@ function ProductsPageContent() {
                           <span className="text-neutral-400">ไม่นับ</span>
                         )}
                       </td>
+                      <td className="px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          className="h-5 w-5 accent-red-500"
+                          checked={p.is_sold_out}
+                          disabled={savingSoldOutId === p.id}
+                          onChange={(e) => toggleSoldOut(p, e.target.checked)}
+                        />
+                      </td>
                       <td className="px-4 py-3 text-right">
                         <button
                           className="mr-1 rounded-lg px-3 py-1.5 text-brand-600 hover:bg-brand-50"
@@ -256,10 +292,17 @@ function ProductsPageContent() {
             {filtered.map((p) => {
               const low = p.track_stock && p.stock <= p.low_stock_threshold;
               return (
-                <div key={p.id} className="card p-4">
+                <div key={p.id} className={`card p-4 ${p.is_sold_out ? "opacity-60" : ""}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="font-semibold">{p.name}</p>
+                      <p className="font-semibold">
+                        {p.name}
+                        {p.is_sold_out && (
+                          <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-semibold text-neutral-500">
+                            ของหมด
+                          </span>
+                        )}
+                      </p>
                       <p className="text-xs text-neutral-400">
                         {catName(p.category_id)}
                         {p.barcode ? ` · ${p.barcode}` : ""}
@@ -279,6 +322,17 @@ function ProductsPageContent() {
                       </span>
                     )}
                   </div>
+                  <label className="mt-3 flex items-center gap-2 text-sm text-neutral-600">
+                    <input
+                      type="checkbox"
+                      className="h-5 w-5 accent-red-500"
+                      checked={p.is_sold_out}
+                      disabled={savingSoldOutId === p.id}
+                      onChange={(e) => toggleSoldOut(p, e.target.checked)}
+                    />
+                    ของหมด (ปิดขายชั่วคราว)
+                  </label>
+
                   <div className="mt-3 flex items-end justify-between">
                     <div className="text-sm text-neutral-500">
                       <p>
