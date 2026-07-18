@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   ArrowLeft,
+  Bell,
   CheckCircle2,
   Plus,
+  QrCode,
   RefreshCw,
   Settings,
   Trash2,
@@ -149,24 +151,41 @@ export default function TablesView({
           {tables.map((t) => {
             const sale = openSales.get(t.id);
             const occupied = !!sale;
+            const billRequested = !!sale?.bill_requested_at;
             return (
               <button
                 key={t.id}
                 onClick={() => setActiveTableId(t.id)}
-                className={`card flex flex-col items-center gap-1 p-5 text-center transition active:scale-[0.97] ${
-                  occupied
-                    ? "border-brand-300 bg-brand-50"
-                    : "hover:border-brand-300"
+                className={`card relative flex flex-col items-center gap-1 p-5 text-center transition active:scale-[0.97] ${
+                  billRequested
+                    ? "border-amber-300 bg-amber-50"
+                    : occupied
+                      ? "border-brand-300 bg-brand-50"
+                      : "hover:border-brand-300"
                 }`}
               >
+                {billRequested && (
+                  <span className="absolute -top-2 right-2 flex items-center gap-1 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white shadow">
+                    <Bell className="h-3 w-3" strokeWidth={2.5} />
+                    เรียกเก็บเงิน
+                  </span>
+                )}
                 <span
-                  className={`text-lg font-bold ${occupied ? "text-brand-700" : "text-neutral-800"}`}
+                  className={`text-lg font-bold ${
+                    billRequested
+                      ? "text-amber-700"
+                      : occupied
+                        ? "text-brand-700"
+                        : "text-neutral-800"
+                  }`}
                 >
                   {t.name}
                 </span>
                 {occupied ? (
                   <>
-                    <span className="text-sm font-semibold text-brand-600">
+                    <span
+                      className={`text-sm font-semibold ${billRequested ? "text-amber-600" : "text-brand-600"}`}
+                    >
                       {baht(Number(sale!.subtotal))}
                     </span>
                     <span className="text-xs text-neutral-500">
@@ -732,6 +751,7 @@ function TableManageModal({
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [qrTable, setQrTable] = useState<DiningTable | null>(null);
 
   async function addTable(e: React.FormEvent) {
     e.preventDefault();
@@ -808,12 +828,22 @@ function TableManageModal({
                   className="flex items-center justify-between rounded-xl border border-neutral-200 px-4 py-3"
                 >
                   <span className="font-medium">{t.name}</span>
-                  <button
-                    className="text-sm text-red-500 hover:underline"
-                    onClick={() => removeTable(t)}
-                  >
-                    <Trash2 className="h-4 w-4" strokeWidth={2} />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      className="rounded-lg p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-brand-600"
+                      onClick={() => setQrTable(t)}
+                      aria-label="ดู QR โต๊ะ"
+                    >
+                      <QrCode className="h-4 w-4" strokeWidth={2} />
+                    </button>
+                    <button
+                      className="rounded-lg p-1.5 text-red-500 hover:bg-red-50"
+                      onClick={() => removeTable(t)}
+                      aria-label="ลบโต๊ะ"
+                    >
+                      <Trash2 className="h-4 w-4" strokeWidth={2} />
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -824,6 +854,75 @@ function TableManageModal({
           <button className="btn-secondary w-full" onClick={onClose}>
             ปิด
           </button>
+        </div>
+      </div>
+
+      {qrTable && (
+        <TableQrModal table={qrTable} onClose={() => setQrTable(null)} />
+      )}
+    </div>
+  );
+}
+
+function TableQrModal({
+  table,
+  onClose,
+}: {
+  table: DiningTable;
+  onClose: () => void;
+}) {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [url, setUrl] = useState("");
+
+  useEffect(() => {
+    const orderUrl = `${window.location.origin}/order/${table.id}`;
+    setUrl(orderUrl);
+    import("qrcode").then((QRCode) => {
+      QRCode.toDataURL(orderUrl, { width: 480, margin: 2 }).then(setDataUrl);
+    });
+  }, [table.id]);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-lg font-bold">QR สั่งอาหาร · {table.name}</h3>
+          <button
+            onClick={onClose}
+            className="rounded-full p-2 text-neutral-400 hover:bg-neutral-100"
+          >
+            <X className="h-5 w-5" strokeWidth={2} />
+          </button>
+        </div>
+
+        {dataUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={dataUrl}
+            alt={`QR โต๊ะ ${table.name}`}
+            className="mx-auto h-56 w-56 rounded-xl border border-neutral-200"
+          />
+        ) : (
+          <div className="mx-auto flex h-56 w-56 items-center justify-center text-neutral-400">
+            กำลังสร้าง QR...
+          </div>
+        )}
+
+        <p className="mt-3 break-all text-xs text-neutral-400">{url}</p>
+
+        <div className="mt-4 flex gap-2">
+          <button className="btn-secondary flex-1" onClick={onClose}>
+            ปิด
+          </button>
+          {dataUrl && (
+            <a
+              href={dataUrl}
+              download={`qr-${table.name}.png`}
+              className="btn-primary flex-1"
+            >
+              ดาวน์โหลด
+            </a>
+          )}
         </div>
       </div>
     </div>

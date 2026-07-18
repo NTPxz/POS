@@ -195,7 +195,7 @@ alter table public.sale_items enable row level security;
 
 drop policy if exists "authenticated full access" on public.categories;
 create policy "select categories" on public.categories
-  for select to authenticated using (true);
+  for select to authenticated, anon using (true);
 create policy "insert categories" on public.categories
   for insert to authenticated with check (true);
 create policy "update categories" on public.categories
@@ -465,7 +465,7 @@ alter table public.dining_tables enable row level security;
 
 drop policy if exists "select tables" on public.dining_tables;
 create policy "select tables" on public.dining_tables
-  for select to authenticated using (true);
+  for select to authenticated, anon using (true);
 drop policy if exists "owner insert tables" on public.dining_tables;
 create policy "owner insert tables" on public.dining_tables
   for insert to authenticated with check (public.is_owner());
@@ -832,3 +832,167 @@ create trigger log_dining_tables after insert or update or delete on public.dini
 drop trigger if exists log_profiles on public.profiles;
 create trigger log_profiles after update on public.profiles
   for each row execute function public.log_activity();
+
+-- ============================================================
+-- ลูกค้าสแกน QR สั่งอาหารเอง (ไม่ต้องล็อกอิน) — ผ่าน RPC ที่ควบคุมไว้เท่านั้น
+-- ไม่เปิด table เต็มให้ anon เข้าถึงตรง ป้องกันด้วย security definer function
+-- ============================================================
+alter table public.sales add column if not exists bill_requested_at timestamptz;
+
+-- เมนูสำหรับลูกค้า: view ที่ซ่อนต้นทุน (cost) ไว้ (แทนด้วย 0) โครงสร้าง
+-- คอลัมน์เหมือน products ทุกอย่างเพื่อให้ frontend ใช้ type Product เดียวกันได้
+create or replace view public.public_menu as
+select
+  id, name, barcode, category_id, price,
+  0::numeric(12, 2) as cost,
+  stock, track_stock, low_stock_threshold, image_url, is_active, created_at, updated_at
+from public.products
+where is_active = true;
+
+grant select on public.public_menu to anon, authenticated;
+
+-- ลูกค้าสั่งอาหารเข้าโต๊ะเอง — ตรวจว่าโต๊ะมีจริงและเปิดใช้งานอยู่ก่อนเสมอ
+create or replace function public.customer_add_order(
+  p_table_id uuid,
+  p_items jsonb
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_table_active boolean;
+  v_table_name text;
+  v_sale_id uuid;
+  v_item jsonb;
+  v_product products%rowtype;
+  v_qty numeric;
+  v_line_total numeric;
+  v_line_cost numeric;
+  v_round_total numeric := 0;
+  v_round_count numeric := 0;
+begin
+  select is_active, name into v_table_active, v_table_name
+    from dining_tables where id = p_table_id;
+  if v_table_active is null then
+    raise exception 'ไม่พบโต๊ะนี้';
+  end if;
+  if not v_table_active then
+    raise exception 'โต๊ะนี้ไม่พร้อมใช้งาน กรุณาติดต่อพนักงาน';
+  end if;
+  if p_items is null or jsonb_array_length(p_items) = 0 then
+    raise exception 'ไม่มีรายการสินค้า';
+  end if;
+
+  select id into v_sale_id from sales
+    where table_id = p_table_id and status = 'open'
+    limit 1;
+
+  if v_sale_id is null then
+    insert into sales (table_id, subtotal, total, cost_total, payment_method, status, user_id)
+    values (p_table_id, 0, 0, 0, 'cash', 'open', null)
+    returning id into v_sale_id;
+  end if;
+
+  for v_item in select * from jsonb_array_elements(p_items) loop
+    v_qty := (v_item ->> 'quantity')::numeric;
+    if v_qty is null or v_qty <= 0 or v_qty > 99 then
+      raise exception 'จำนวนสินค้าไม่ถูกต้อง';
+    end if;
+
+    select * into v_product from products
+      where id = (v_item ->> 'product_id')::uuid and is_active = true
+      for update;
+    if not found then
+      raise exception 'ไม่พบสินค้า (id: %)', v_item ->> 'product_id';
+    end if;
+
+    v_line_total := v_product.price * v_qty;
+    v_line_cost := v_product.cost * v_qty;
+    v_round_total := v_round_total + v_line_total;
+    v_round_count := v_round_count + v_qty;
+
+    insert into sale_items (sale_id, product_id, product_name, price, cost, quantity, total)
+    values (v_sale_id, v_product.id, v_product.name, v_product.price, v_product.cost, v_qty, v_line_total);
+
+    if v_product.track_stock then
+      update products set stock = stock - v_qty, updated_at = now() where id = v_product.id;
+    end if;
+
+    update sales set
+      subtotal = subtotal + v_line_total,
+      total = greatest(subtotal + v_line_total - discount, 0),
+      cost_total = cost_total + v_line_cost
+      where id = v_sale_id;
+  end loop;
+
+  perform public.log_action('order', 'sales', v_sale_id::text,
+    format('ลูกค้าสั่งอาหารเข้า%s เอง: %s รายการ ยอด %s บาท', coalesce(v_table_name, 'โต๊ะ'), v_round_count, v_round_total));
+
+  return v_sale_id;
+end;
+$$;
+
+-- ดูออเดอร์ของโต๊ะตัวเอง (ไม่โชว์ต้นทุน) — ลูกค้าเรียกดูได้โดยไม่ล็อกอิน
+create or replace function public.get_table_order(p_table_id uuid)
+returns jsonb
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+declare
+  v_sale sales%rowtype;
+  v_items jsonb;
+begin
+  select * into v_sale from sales where table_id = p_table_id and status = 'open' limit 1;
+  if not found then
+    return jsonb_build_object('sale_id', null, 'subtotal', 0, 'items', '[]'::jsonb, 'bill_requested', false);
+  end if;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'id', si.id, 'product_name', si.product_name,
+      'quantity', si.quantity, 'price', si.price, 'total', si.total
+    ) order by si.created_at), '[]'::jsonb)
+    into v_items
+    from sale_items si where si.sale_id = v_sale.id;
+
+  return jsonb_build_object(
+    'sale_id', v_sale.id,
+    'subtotal', v_sale.subtotal,
+    'items', v_items,
+    'bill_requested', v_sale.bill_requested_at is not null
+  );
+end;
+$$;
+
+-- ลูกค้าเรียกเก็บเงิน (ปักธงให้พนักงานเห็นในหน้าเปิดโต๊ะ ไม่ได้ปิดบิลเอง)
+create or replace function public.request_checkout(p_table_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_sale_id uuid;
+  v_table_name text;
+begin
+  select id into v_sale_id from sales where table_id = p_table_id and status = 'open' limit 1;
+  if v_sale_id is null then
+    raise exception 'โต๊ะนี้ยังไม่มีออเดอร์';
+  end if;
+
+  update sales set bill_requested_at = now() where id = v_sale_id;
+
+  select name into v_table_name from dining_tables where id = p_table_id;
+  perform public.log_action('request_checkout', 'sales', v_sale_id::text,
+    format('ลูกค้า%s กดเรียกเก็บเงิน', coalesce(v_table_name, 'โต๊ะ')));
+end;
+$$;
+
+revoke execute on function public.customer_add_order from public;
+revoke execute on function public.get_table_order from public;
+revoke execute on function public.request_checkout from public;
+grant execute on function public.customer_add_order to anon, authenticated;
+grant execute on function public.get_table_order to anon, authenticated;
+grant execute on function public.request_checkout to anon, authenticated;

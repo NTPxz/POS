@@ -39,6 +39,7 @@ export type Sale = {
   note: string | null;
   status: SaleStatus;
   voided_at: string | null;
+  bill_requested_at: string | null;
   user_id: string | null;
   created_at: string;
 };
@@ -154,4 +155,19 @@ export type ActivityLog = {
   actor_id: string | null;
   actor_email: string | null;
   created_at: string;
+};
+
+export type TableOrderItem = {
+  id: string;
+  product_name: string;
+  quantity: number;
+  price: number;
+  total: number;
+};
+
+export type TableOrder = {
+  sale_id: string | null;
+  subtotal: number;
+  items: TableOrderItem[];
+  bill_requested: boolean;
 };
