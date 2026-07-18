@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  History,
   LayoutDashboard,
   LogOut,
   Package,
@@ -30,6 +31,7 @@ const NAV_ITEMS: {
   { href: "/income", label: "รายได้", icon: TrendingUp, minRole: "owner" },
   { href: "/expenses", label: "รายจ่าย", icon: Wallet, minRole: "owner" },
   { href: "/staff", label: "พนักงาน", icon: Users, minRole: "owner" },
+  { href: "/log", label: "Log", icon: History, minRole: "owner" },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {

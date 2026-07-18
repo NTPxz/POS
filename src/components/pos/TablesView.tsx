@@ -214,6 +214,8 @@ function TableOrderSession({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const roundTotal = round.reduce((s, i) => s + i.product.price * i.quantity, 0);
   const roundCount = round.reduce((s, i) => s + i.quantity, 0);
@@ -263,6 +265,21 @@ function TableOrderSession({
     onChanged();
   }
 
+  async function editExistingItem(saleItemId: string, newQuantity: number) {
+    setEditingItemId(saleItemId);
+    setEditError(null);
+    const { error } = await supabase.rpc("update_table_order_item", {
+      p_sale_item_id: saleItemId,
+      p_quantity: newQuantity,
+    });
+    setEditingItemId(null);
+    if (error) {
+      setEditError(`แก้ไขรายการไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    onChanged();
+  }
+
   return (
     <div className="flex flex-1 flex-col lg:flex-row">
       <div className="flex flex-1 flex-col">
@@ -300,6 +317,9 @@ function TableOrderSession({
           onChangeQty={changeQty}
           onSubmitRound={submitRound}
           onCheckout={() => setCheckoutOpen(true)}
+          editingItemId={editingItemId}
+          editError={editError}
+          onEditItem={editExistingItem}
         />
       </div>
 
@@ -339,6 +359,9 @@ function TableOrderSession({
               onChangeQty={changeQty}
               onSubmitRound={submitRound}
               onCheckout={() => setCheckoutOpen(true)}
+              editingItemId={editingItemId}
+              editError={editError}
+              onEditItem={editExistingItem}
             />
           </div>
         </div>
@@ -370,6 +393,9 @@ function OrderPanel({
   onChangeQty,
   onSubmitRound,
   onCheckout,
+  editingItemId,
+  editError,
+  onEditItem,
 }: {
   table: DiningTable;
   sale: SaleWithItems | null;
@@ -380,6 +406,9 @@ function OrderPanel({
   onChangeQty: (productId: string, delta: number) => void;
   onSubmitRound: () => void;
   onCheckout: () => void;
+  editingItemId: string | null;
+  editError: string | null;
+  onEditItem: (saleItemId: string, newQuantity: number) => void;
 }) {
   const existingTotal = sale ? Number(sale.subtotal) : 0;
 
@@ -389,18 +418,61 @@ function OrderPanel({
         {sale && sale.sale_items.length > 0 && (
           <div className="mb-4">
             <p className="mb-2 text-xs font-semibold uppercase text-neutral-400">
-              สั่งไปแล้ว
+              สั่งไปแล้ว (แก้ไขได้ถ้ากดผิด)
             </p>
-            <ul className="space-y-1.5">
-              {sale.sale_items.map((item) => (
-                <li key={item.id} className="flex justify-between text-sm">
-                  <span className="text-neutral-600">
-                    {item.product_name} × {formatNumber(Number(item.quantity))}
-                  </span>
-                  <span className="font-medium">{baht(Number(item.total))}</span>
-                </li>
-              ))}
+            <ul className="space-y-2">
+              {sale.sale_items.map((item) => {
+                const qty = Number(item.quantity);
+                const busy = editingItemId === item.id;
+                return (
+                  <li
+                    key={item.id}
+                    className="flex items-center gap-2 rounded-xl border border-neutral-200 p-2.5"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        {item.product_name}
+                      </p>
+                      <p className="text-xs text-neutral-500">
+                        {baht(Number(item.total))}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        disabled={busy}
+                        onClick={() => onEditItem(item.id, qty - 1)}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-100 text-sm font-bold text-neutral-600 active:scale-95 disabled:opacity-40"
+                      >
+                        −
+                      </button>
+                      <span className="w-6 text-center text-sm font-semibold">
+                        {formatNumber(qty)}
+                      </span>
+                      <button
+                        disabled={busy}
+                        onClick={() => onEditItem(item.id, qty + 1)}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-100 text-sm font-bold text-neutral-600 active:scale-95 disabled:opacity-40"
+                      >
+                        +
+                      </button>
+                      <button
+                        disabled={busy}
+                        onClick={() => onEditItem(item.id, 0)}
+                        className="ml-1 p-1 text-neutral-300 hover:text-red-500 disabled:opacity-40"
+                        aria-label="ลบรายการ"
+                      >
+                        <Trash2 className="h-4 w-4" strokeWidth={2} />
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
+            {editError && (
+              <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">
+                {editError}
+              </p>
+            )}
           </div>
         )}
 

@@ -237,6 +237,7 @@ set search_path = public
 as $$
 declare
   v_sale_id uuid;
+  v_sale_number bigint;
   v_subtotal numeric := 0;
   v_cost_total numeric := 0;
   v_total numeric;
@@ -281,7 +282,7 @@ begin
     p_note,
     auth.uid()
   )
-  returning id into v_sale_id;
+  returning id, sale_number into v_sale_id, v_sale_number;
 
   -- รอบสอง: บันทึกรายการและตัดสต๊อก
   for v_item in select * from jsonb_array_elements(p_items) loop
@@ -294,12 +295,16 @@ begin
     end if;
   end loop;
 
+  perform public.log_action('checkout', 'sales', v_sale_id::text,
+    format('ขายสินค้า (ขายด่วน) บิล #%s ยอด %s บาท (%s)', v_sale_number, v_total, p_payment_method));
+
   return v_sale_id;
 end;
 $$;
 
 -- ============================================================
 -- ฟังก์ชันยกเลิกบิล: เปลี่ยนสถานะเป็น voided และคืนสต๊อก (พนักงานทุกคนทำได้)
+-- รองรับทั้งบิล "open" (ยกเลิกทั้งโต๊ะ) และ "completed"
 -- ============================================================
 create or replace function public.void_sale(p_sale_id uuid)
 returns void
@@ -309,13 +314,15 @@ set search_path = public
 as $$
 declare
   v_item record;
+  v_sale_number bigint;
 begin
   if auth.uid() is null then
     raise exception 'ต้องล็อกอินก่อน';
   end if;
 
   update sales set status = 'voided', voided_at = now()
-    where id = p_sale_id and status in ('open', 'completed');
+    where id = p_sale_id and status in ('open', 'completed')
+    returning sale_number into v_sale_number;
   if not found then
     raise exception 'ไม่พบบิลหรือบิลถูกยกเลิกไปแล้ว';
   end if;
@@ -326,6 +333,9 @@ begin
     update products set stock = stock + v_item.quantity, updated_at = now()
       where id = v_item.product_id and track_stock;
   end loop;
+
+  perform public.log_action('void', 'sales', p_sale_id::text,
+    format('ยกเลิกบิล #%s', v_sale_number));
 end;
 $$;
 
@@ -489,6 +499,9 @@ declare
   v_qty numeric;
   v_line_total numeric;
   v_line_cost numeric;
+  v_round_total numeric := 0;
+  v_round_count numeric := 0;
+  v_table_name text;
 begin
   if auth.uid() is null then
     raise exception 'ต้องล็อกอินก่อน';
@@ -496,6 +509,8 @@ begin
   if p_items is null or jsonb_array_length(p_items) = 0 then
     raise exception 'ไม่มีรายการสินค้า';
   end if;
+
+  select name into v_table_name from dining_tables where id = p_table_id;
 
   select id into v_sale_id from sales
     where table_id = p_table_id and status = 'open'
@@ -522,6 +537,8 @@ begin
 
     v_line_total := v_product.price * v_qty;
     v_line_cost := v_product.cost * v_qty;
+    v_round_total := v_round_total + v_line_total;
+    v_round_count := v_round_count + v_qty;
 
     insert into sale_items (sale_id, product_id, product_name, price, cost, quantity, total)
     values (v_sale_id, v_product.id, v_product.name, v_product.price, v_product.cost, v_qty, v_line_total);
@@ -536,6 +553,9 @@ begin
       cost_total = cost_total + v_line_cost
       where id = v_sale_id;
   end loop;
+
+  perform public.log_action('order', 'sales', v_sale_id::text,
+    format('สั่งอาหารเข้า%s: %s รายการ ยอด %s บาท', coalesce(v_table_name, 'โต๊ะ'), v_round_count, v_round_total));
 
   return v_sale_id;
 end;
@@ -556,12 +576,17 @@ as $$
 declare
   v_subtotal numeric;
   v_total numeric;
+  v_sale_number bigint;
+  v_table_name text;
 begin
   if auth.uid() is null then
     raise exception 'ต้องล็อกอินก่อน';
   end if;
 
-  select subtotal into v_subtotal from sales where id = p_sale_id and status = 'open';
+  select s.subtotal, s.sale_number, t.name
+    into v_subtotal, v_sale_number, v_table_name
+    from sales s left join dining_tables t on t.id = s.table_id
+    where s.id = p_sale_id and s.status = 'open';
   if not found then
     raise exception 'ไม่พบบิลที่เปิดอยู่ของโต๊ะนี้';
   end if;
@@ -577,14 +602,233 @@ begin
     note = p_note,
     status = 'completed'
     where id = p_sale_id;
+
+  perform public.log_action('checkout', 'sales', p_sale_id::text,
+    format('เก็บเงิน/ปิด%s บิล #%s ยอด %s บาท (%s)', coalesce(v_table_name, 'โต๊ะ'), v_sale_number, v_total, p_payment_method));
+end;
+$$;
+
+-- แก้ไข/ลบรายการที่สั่งไปแล้วในบิลที่ยังเปิดอยู่ (กันกดผิด) — quantity <= 0 หรือ null = ลบรายการ
+create or replace function public.update_table_order_item(
+  p_sale_item_id uuid,
+  p_quantity numeric
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_item sale_items%rowtype;
+  v_sale_status text;
+  v_sale_number bigint;
+  v_table_name text;
+  v_old_line_total numeric;
+  v_old_line_cost numeric;
+  v_new_line_total numeric := 0;
+  v_new_line_cost numeric := 0;
+  v_qty_delta numeric;
+  v_desc text;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select * into v_item from sale_items where id = p_sale_item_id for update;
+  if not found then
+    raise exception 'ไม่พบรายการนี้';
+  end if;
+
+  select s.status, s.sale_number, t.name into v_sale_status, v_sale_number, v_table_name
+    from sales s left join dining_tables t on t.id = s.table_id
+    where s.id = v_item.sale_id;
+  if v_sale_status is distinct from 'open' then
+    raise exception 'แก้ไขได้เฉพาะบิลที่ยังเปิดอยู่เท่านั้น';
+  end if;
+
+  v_old_line_total := v_item.total;
+  v_old_line_cost := v_item.cost * v_item.quantity;
+  v_qty_delta := coalesce(p_quantity, 0) - v_item.quantity;
+
+  if p_quantity is null or p_quantity <= 0 then
+    delete from sale_items where id = p_sale_item_id;
+    v_desc := format('ลบ "%s" ออกจากบิล #%s ของ%s', v_item.product_name, v_sale_number, coalesce(v_table_name, 'โต๊ะ'));
+  else
+    v_new_line_total := v_item.price * p_quantity;
+    v_new_line_cost := v_item.cost * p_quantity;
+    update sale_items set quantity = p_quantity, total = v_new_line_total where id = p_sale_item_id;
+    v_desc := format('แก้ไข "%s" ในบิล #%s ของ%s จำนวน %s → %s', v_item.product_name, v_sale_number, coalesce(v_table_name, 'โต๊ะ'), v_item.quantity, p_quantity);
+  end if;
+
+  if v_item.product_id is not null then
+    update products set stock = stock - v_qty_delta, updated_at = now()
+      where id = v_item.product_id and track_stock;
+  end if;
+
+  update sales set
+    subtotal = subtotal - v_old_line_total + v_new_line_total,
+    cost_total = cost_total - v_old_line_cost + v_new_line_cost,
+    total = greatest((subtotal - v_old_line_total + v_new_line_total) - discount, 0)
+    where id = v_item.sale_id;
+
+  perform public.log_action('edit_item', 'sale_items', p_sale_item_id::text, v_desc);
 end;
 $$;
 
 revoke execute on function public.add_order_to_table from public, anon;
 revoke execute on function public.checkout_table from public, anon;
+revoke execute on function public.update_table_order_item from public, anon;
 grant execute on function public.add_order_to_table to authenticated;
 grant execute on function public.checkout_table to authenticated;
+grant execute on function public.update_table_order_item to authenticated;
 
 insert into public.dining_tables (name, position) values
   ('โต๊ะ 1', 1), ('โต๊ะ 2', 2), ('โต๊ะ 3', 3), ('โต๊ะ 4', 4), ('โต๊ะ 5', 5)
 on conflict do nothing;
+
+-- ============================================================
+-- Log กิจกรรม: บันทึกทุกการเพิ่ม/แก้ไข/ลบในระบบอัตโนมัติ เห็นได้เฉพาะ owner
+-- ============================================================
+create table if not exists public.activity_log (
+  id uuid primary key default gen_random_uuid(),
+  action text not null,
+  table_name text not null,
+  record_id text,
+  description text not null,
+  actor_id uuid references auth.users (id),
+  actor_email text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_activity_log_created on public.activity_log (created_at desc);
+
+alter table public.activity_log enable row level security;
+
+drop policy if exists "owner reads log" on public.activity_log;
+create policy "owner reads log" on public.activity_log
+  for select to authenticated using (public.is_owner());
+-- ไม่มี policy insert/update/delete ให้ authenticated — เขียนได้ผ่าน security definer function เท่านั้น
+
+-- helper สำหรับบันทึก log จากฟังก์ชันอื่น (create_sale, void_sale, add_order_to_table, checkout_table, update_table_order_item)
+create or replace function public.log_action(
+  p_action text,
+  p_table text,
+  p_record_id text,
+  p_description text
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.activity_log (action, table_name, record_id, description, actor_id, actor_email)
+  values (
+    p_action, p_table, p_record_id, p_description,
+    auth.uid(), (select email from auth.users where id = auth.uid())
+  );
+end;
+$$;
+
+revoke execute on function public.log_action from public, anon, authenticated;
+
+-- trigger อัตโนมัติสำหรับตารางที่แก้ไขตรงๆ จากหน้าเว็บ (ไม่ผ่าน RPC เฉพาะ)
+create or replace function public.log_activity()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_old jsonb;
+  v_new jsonb;
+  v_record_id text;
+  v_desc text;
+begin
+  v_old := case when TG_OP <> 'INSERT' then to_jsonb(old) else null end;
+  v_new := case when TG_OP <> 'DELETE' then to_jsonb(new) else null end;
+  v_record_id := coalesce(v_new->>'id', v_old->>'id');
+
+  v_desc := case TG_TABLE_NAME
+    when 'products' then case TG_OP
+      when 'INSERT' then format('เพิ่มสินค้า "%s" ราคา %s บาท', v_new->>'name', v_new->>'price')
+      when 'UPDATE' then format('แก้ไขสินค้า "%s"', v_new->>'name')
+      when 'DELETE' then format('ลบสินค้า "%s"', v_old->>'name')
+    end
+    when 'categories' then case TG_OP
+      when 'INSERT' then format('เพิ่มหมวดหมู่สินค้า "%s"', v_new->>'name')
+      when 'UPDATE' then format('แก้ไขหมวดหมู่สินค้า "%s"', v_new->>'name')
+      when 'DELETE' then format('ลบหมวดหมู่สินค้า "%s"', v_old->>'name')
+    end
+    when 'expenses' then case TG_OP
+      when 'INSERT' then format('บันทึกรายจ่าย "%s" %s บาท', v_new->>'title', v_new->>'amount')
+      when 'UPDATE' then format('แก้ไขรายจ่าย "%s"', v_new->>'title')
+      when 'DELETE' then format('ลบรายจ่าย "%s" %s บาท', v_old->>'title', v_old->>'amount')
+    end
+    when 'expense_categories' then case TG_OP
+      when 'INSERT' then format('เพิ่มหมวดหมู่รายจ่าย "%s"', v_new->>'name')
+      when 'DELETE' then format('ลบหมวดหมู่รายจ่าย "%s"', v_old->>'name')
+      else format('แก้ไขหมวดหมู่รายจ่าย "%s"', v_new->>'name')
+    end
+    when 'income' then case TG_OP
+      when 'INSERT' then format('บันทึกรายได้ "%s" %s บาท', v_new->>'title', v_new->>'amount')
+      when 'UPDATE' then format('แก้ไขรายได้ "%s"', v_new->>'title')
+      when 'DELETE' then format('ลบรายได้ "%s" %s บาท', v_old->>'title', v_old->>'amount')
+    end
+    when 'income_categories' then case TG_OP
+      when 'INSERT' then format('เพิ่มหมวดหมู่รายได้ "%s"', v_new->>'name')
+      when 'DELETE' then format('ลบหมวดหมู่รายได้ "%s"', v_old->>'name')
+      else format('แก้ไขหมวดหมู่รายได้ "%s"', v_new->>'name')
+    end
+    when 'dining_tables' then case TG_OP
+      when 'INSERT' then format('เพิ่มโต๊ะ "%s"', v_new->>'name')
+      when 'DELETE' then format('ลบโต๊ะ "%s"', v_old->>'name')
+      else format('แก้ไขโต๊ะ "%s"', v_new->>'name')
+    end
+    when 'profiles' then case TG_OP
+      when 'UPDATE' then format('แก้ไขข้อมูลพนักงาน %s (role: %s)', coalesce(v_new->>'email', v_new->>'phone'), v_new->>'role')
+      else format('บัญชีพนักงานใหม่ %s', coalesce(v_new->>'email', v_new->>'phone'))
+    end
+    else format('%s %s', TG_OP, TG_TABLE_NAME)
+  end;
+
+  insert into public.activity_log (action, table_name, record_id, description, actor_id, actor_email)
+  values (lower(TG_OP), TG_TABLE_NAME, v_record_id, v_desc, auth.uid(), (select email from auth.users where id = auth.uid()));
+
+  if TG_OP = 'DELETE' then return old; end if;
+  return new;
+end;
+$$;
+
+-- log_activity ใช้เฉพาะเป็น trigger เท่านั้น ไม่ควรเรียกตรงได้
+revoke execute on function public.log_activity from public, anon, authenticated;
+
+drop trigger if exists log_products on public.products;
+create trigger log_products after insert or update or delete on public.products
+  for each row execute function public.log_activity();
+
+drop trigger if exists log_categories on public.categories;
+create trigger log_categories after insert or update or delete on public.categories
+  for each row execute function public.log_activity();
+
+drop trigger if exists log_expenses on public.expenses;
+create trigger log_expenses after insert or update or delete on public.expenses
+  for each row execute function public.log_activity();
+
+drop trigger if exists log_expense_categories on public.expense_categories;
+create trigger log_expense_categories after insert or update or delete on public.expense_categories
+  for each row execute function public.log_activity();
+
+drop trigger if exists log_income on public.income;
+create trigger log_income after insert or update or delete on public.income
+  for each row execute function public.log_activity();
+
+drop trigger if exists log_income_categories on public.income_categories;
+create trigger log_income_categories after insert or update or delete on public.income_categories
+  for each row execute function public.log_activity();
+
+drop trigger if exists log_dining_tables on public.dining_tables;
+create trigger log_dining_tables after insert or update or delete on public.dining_tables
+  for each row execute function public.log_activity();
+
+drop trigger if exists log_profiles on public.profiles;
+create trigger log_profiles after update on public.profiles
+  for each row execute function public.log_activity();

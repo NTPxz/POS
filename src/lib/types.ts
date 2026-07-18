@@ -144,3 +144,14 @@ export type DiningTable = {
   is_active: boolean;
   created_at: string;
 };
+
+export type ActivityLog = {
+  id: string;
+  action: string;
+  table_name: string;
+  record_id: string | null;
+  description: string;
+  actor_id: string | null;
+  actor_email: string | null;
+  created_at: string;
+};
