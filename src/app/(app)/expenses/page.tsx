@@ -23,6 +23,8 @@ export default function ExpensesPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ExpenseWithCategory | null>(null);
   const [catModalOpen, setCatModalOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [categoryId, setCategoryId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -53,16 +55,28 @@ export default function ExpensesPage() {
     loadData();
   }, [loadData]);
 
-  const total = expenses.reduce((s, e) => s + Number(e.amount), 0);
+  const filteredExpenses = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return expenses.filter((e) => {
+      if (categoryId && e.category_id !== categoryId) return false;
+      if (!q) return true;
+      return (
+        e.title.toLowerCase().includes(q) ||
+        (e.note ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [expenses, search, categoryId]);
+
+  const total = filteredExpenses.reduce((s, e) => s + Number(e.amount), 0);
 
   const byCategory = useMemo(() => {
     const map = new Map<string, number>();
-    for (const e of expenses) {
+    for (const e of filteredExpenses) {
       const name = e.expense_categories?.name ?? "ไม่ระบุหมวดหมู่";
       map.set(name, (map.get(name) ?? 0) + Number(e.amount));
     }
     return [...map.entries()].sort((a, b) => b[1] - a[1]);
-  }, [expenses]);
+  }, [filteredExpenses]);
 
   function openAdd() {
     setEditing(null);
@@ -120,12 +134,37 @@ export default function ExpensesPage() {
         </div>
       </div>
 
+      {/* ค้นหาและกรองตามหมวดหมู่ */}
+      <div className="mb-4 space-y-3">
+        <input
+          className="input max-w-md"
+          placeholder="ค้นหารายการ หรือหมายเหตุ..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <div className="no-scrollbar flex gap-2 overflow-x-auto">
+          <CategoryChip
+            label="ทั้งหมด"
+            active={categoryId === null}
+            onClick={() => setCategoryId(null)}
+          />
+          {categories.map((c) => (
+            <CategoryChip
+              key={c.id}
+              label={c.name}
+              active={categoryId === c.id}
+              onClick={() => setCategoryId(c.id)}
+            />
+          ))}
+        </div>
+      </div>
+
       {/* สรุปช่วงที่เลือก */}
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3">
         <div className="card p-4">
           <p className="text-xs text-neutral-500 md:text-sm">จำนวนรายการ</p>
           <p className="text-lg font-bold md:text-2xl">
-            {formatNumber(expenses.length)}
+            {formatNumber(filteredExpenses.length)}
           </p>
         </div>
         <div className="card p-4">
@@ -165,10 +204,14 @@ export default function ExpensesPage() {
             ลองอีกครั้ง
           </button>
         </div>
-      ) : expenses.length === 0 ? (
+      ) : filteredExpenses.length === 0 ? (
         <div className="py-16 text-center text-neutral-400">
           <Wallet className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
-          <p>ไม่มีรายจ่ายในช่วงวันที่เลือก</p>
+          <p>
+            {expenses.length === 0
+              ? "ไม่มีรายจ่ายในช่วงวันที่เลือก"
+              : "ไม่พบรายจ่ายที่ตรงกับตัวกรอง"}
+          </p>
         </div>
       ) : (
         <>
@@ -185,7 +228,7 @@ export default function ExpensesPage() {
                 </tr>
               </thead>
               <tbody>
-                {expenses.map((e) => (
+                {filteredExpenses.map((e) => (
                   <tr
                     key={e.id}
                     className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
@@ -227,7 +270,7 @@ export default function ExpensesPage() {
 
           {/* การ์ดสำหรับมือถือ */}
           <div className="space-y-3 md:hidden">
-            {expenses.map((e) => (
+            {filteredExpenses.map((e) => (
               <div key={e.id} className="card p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -566,5 +609,28 @@ function Field({
       </label>
       {children}
     </div>
+  );
+}
+
+function CategoryChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition ${
+        active
+          ? "bg-brand-600 text-white"
+          : "bg-white text-neutral-600 hover:bg-neutral-50"
+      }`}
+    >
+      {label}
+    </button>
   );
 }
