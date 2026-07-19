@@ -21,6 +21,8 @@ import {
   DiningTable,
   PaymentMethod,
   Product,
+  SALE_ITEM_STATUS_LABELS,
+  SaleItemStatus,
   SaleWithItems,
 } from "@/lib/types";
 import { useProfile } from "@/components/ProfileProvider";
@@ -166,6 +168,8 @@ export default function TablesView({
             const sale = openSales.get(t.id);
             const occupied = !!sale;
             const billRequested = !!sale?.bill_requested_at;
+            const pendingCount =
+              sale?.sale_items.filter((i) => i.status === "pending").length ?? 0;
             return (
               <button
                 key={t.id}
@@ -178,6 +182,11 @@ export default function TablesView({
                       : "hover:border-brand-300"
                 }`}
               >
+                {pendingCount > 0 && (
+                  <span className="absolute -left-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white shadow">
+                    {pendingCount}
+                  </span>
+                )}
                 {billRequested && (
                   <span className="absolute -top-2 right-2 flex items-center gap-1 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white shadow">
                     <Bell className="h-3 w-3" strokeWidth={2.5} />
@@ -249,6 +258,8 @@ function TableOrderSession({
   const [panelOpen, setPanelOpen] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   const roundTotal = round.reduce((s, i) => s + i.product.price * i.quantity, 0);
   const roundCount = round.reduce((s, i) => s + i.quantity, 0);
@@ -313,6 +324,21 @@ function TableOrderSession({
     onChanged();
   }
 
+  async function advanceItemStatus(saleItemId: string, newStatus: SaleItemStatus) {
+    setStatusBusyId(saleItemId);
+    setStatusError(null);
+    const { error } = await supabase.rpc("update_sale_item_status", {
+      p_sale_item_id: saleItemId,
+      p_status: newStatus,
+    });
+    setStatusBusyId(null);
+    if (error) {
+      setStatusError(`อัปเดตสถานะไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    onChanged();
+  }
+
   return (
     <div className="flex flex-1 flex-col lg:flex-row">
       <div className="flex flex-1 flex-col">
@@ -353,6 +379,9 @@ function TableOrderSession({
           editingItemId={editingItemId}
           editError={editError}
           onEditItem={editExistingItem}
+          statusBusyId={statusBusyId}
+          statusError={statusError}
+          onAdvanceStatus={advanceItemStatus}
         />
       </div>
 
@@ -395,6 +424,9 @@ function TableOrderSession({
               editingItemId={editingItemId}
               editError={editError}
               onEditItem={editExistingItem}
+              statusBusyId={statusBusyId}
+              statusError={statusError}
+              onAdvanceStatus={advanceItemStatus}
             />
           </div>
         </div>
@@ -429,6 +461,9 @@ function OrderPanel({
   editingItemId,
   editError,
   onEditItem,
+  statusBusyId,
+  statusError,
+  onAdvanceStatus,
 }: {
   table: DiningTable;
   sale: SaleWithItems | null;
@@ -442,6 +477,9 @@ function OrderPanel({
   editingItemId: string | null;
   editError: string | null;
   onEditItem: (saleItemId: string, newQuantity: number) => void;
+  statusBusyId: string | null;
+  statusError: string | null;
+  onAdvanceStatus: (saleItemId: string, newStatus: SaleItemStatus) => void;
 }) {
   const existingTotal = sale ? Number(sale.subtotal) : 0;
 
@@ -457,45 +495,77 @@ function OrderPanel({
               {sale.sale_items.map((item) => {
                 const qty = Number(item.quantity);
                 const busy = editingItemId === item.id;
+                const statusBusy = statusBusyId === item.id;
                 return (
                   <li
                     key={item.id}
-                    className="flex items-center gap-2 rounded-xl border border-neutral-200 p-2.5"
+                    className="rounded-xl border border-neutral-200 p-2.5"
                   >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">
-                        {item.product_name}
-                      </p>
-                      <p className="text-xs text-neutral-500">
-                        {baht(Number(item.total))}
-                      </p>
+                    <div className="flex items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">
+                          {item.product_name}
+                        </p>
+                        <p className="text-xs text-neutral-500">
+                          {baht(Number(item.total))}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          disabled={busy}
+                          onClick={() => onEditItem(item.id, qty - 1)}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-100 text-sm font-bold text-neutral-600 active:scale-95 disabled:opacity-40"
+                        >
+                          −
+                        </button>
+                        <span className="w-6 text-center text-sm font-semibold">
+                          {formatNumber(qty)}
+                        </span>
+                        <button
+                          disabled={busy}
+                          onClick={() => onEditItem(item.id, qty + 1)}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-100 text-sm font-bold text-neutral-600 active:scale-95 disabled:opacity-40"
+                        >
+                          +
+                        </button>
+                        <button
+                          disabled={busy}
+                          onClick={() => onEditItem(item.id, 0)}
+                          className="ml-1 p-1 text-neutral-300 hover:text-red-500 disabled:opacity-40"
+                          aria-label="ลบรายการ"
+                        >
+                          <Trash2 className="h-4 w-4" strokeWidth={2} />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        disabled={busy}
-                        onClick={() => onEditItem(item.id, qty - 1)}
-                        className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-100 text-sm font-bold text-neutral-600 active:scale-95 disabled:opacity-40"
+                    <div className="mt-2 flex items-center justify-between gap-2 border-t border-neutral-100 pt-2">
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          item.status === "served"
+                            ? "bg-green-50 text-green-600"
+                            : item.status === "accepted"
+                              ? "bg-blue-50 text-blue-600"
+                              : "bg-amber-50 text-amber-600"
+                        }`}
                       >
-                        −
-                      </button>
-                      <span className="w-6 text-center text-sm font-semibold">
-                        {formatNumber(qty)}
+                        {SALE_ITEM_STATUS_LABELS[item.status]}
                       </span>
-                      <button
-                        disabled={busy}
-                        onClick={() => onEditItem(item.id, qty + 1)}
-                        className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-100 text-sm font-bold text-neutral-600 active:scale-95 disabled:opacity-40"
-                      >
-                        +
-                      </button>
-                      <button
-                        disabled={busy}
-                        onClick={() => onEditItem(item.id, 0)}
-                        className="ml-1 p-1 text-neutral-300 hover:text-red-500 disabled:opacity-40"
-                        aria-label="ลบรายการ"
-                      >
-                        <Trash2 className="h-4 w-4" strokeWidth={2} />
-                      </button>
+                      {item.status !== "served" && (
+                        <button
+                          disabled={statusBusy}
+                          onClick={() =>
+                            onAdvanceStatus(
+                              item.id,
+                              item.status === "pending" ? "accepted" : "served"
+                            )
+                          }
+                          className={`rounded-lg px-3 py-1.5 text-xs font-semibold text-white active:scale-95 disabled:opacity-40 ${
+                            item.status === "pending" ? "bg-amber-500" : "bg-green-600"
+                          }`}
+                        >
+                          {item.status === "pending" ? "รับออเดอร์" : "เสิร์ฟแล้ว"}
+                        </button>
+                      )}
                     </div>
                   </li>
                 );
@@ -504,6 +574,11 @@ function OrderPanel({
             {editError && (
               <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">
                 {editError}
+              </p>
+            )}
+            {statusError && (
+              <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">
+                {statusError}
               </p>
             )}
           </div>

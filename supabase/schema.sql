@@ -64,6 +64,7 @@ create table if not exists public.sale_items (
   quantity numeric(12, 2) not null,
   total numeric(12, 2) not null,
   ordered_by text not null default 'staff' check (ordered_by in ('staff', 'customer')),
+  status text not null default 'pending' check (status in ('pending', 'accepted', 'served')),
   created_at timestamptz not null default now()
 );
 
@@ -683,6 +684,55 @@ grant execute on function public.add_order_to_table to authenticated;
 grant execute on function public.checkout_table to authenticated;
 grant execute on function public.update_table_order_item to authenticated;
 
+-- ติดตามสถานะครัว: รับออเดอร์ -> เสิร์ฟแล้ว ต่อรายการ (staff เท่านั้น ลูกค้าห้ามปิดออเดอร์ตัวเอง)
+create or replace function public.update_sale_item_status(
+  p_sale_item_id uuid,
+  p_status text
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_sale_id uuid;
+  v_sale_status text;
+  v_product_name text;
+  v_table_name text;
+begin
+  if p_status not in ('pending', 'accepted', 'served') then
+    raise exception 'สถานะไม่ถูกต้อง';
+  end if;
+
+  select si.sale_id, si.product_name into v_sale_id, v_product_name
+    from sale_items si where si.id = p_sale_item_id;
+  if v_sale_id is null then
+    raise exception 'ไม่พบรายการนี้';
+  end if;
+
+  select status into v_sale_status from sales where id = v_sale_id;
+  if v_sale_status is distinct from 'open' then
+    raise exception 'บิลนี้ปิดไปแล้ว แก้ไขสถานะไม่ได้';
+  end if;
+
+  update sale_items set status = p_status where id = p_sale_item_id;
+
+  select dt.name into v_table_name from sales s
+    join dining_tables dt on dt.id = s.table_id
+    where s.id = v_sale_id;
+
+  perform public.log_action('order_status', 'sale_items', p_sale_item_id::text,
+    format('%s: %s -> %s', coalesce(v_table_name, 'โต๊ะ'), v_product_name,
+      case p_status
+        when 'accepted' then 'รับออเดอร์แล้ว'
+        when 'served' then 'เสิร์ฟแล้ว'
+        else 'รอรับออเดอร์'
+      end));
+end;
+$$;
+
+revoke execute on function public.update_sale_item_status from public, anon;
+grant execute on function public.update_sale_item_status to authenticated;
+
 insert into public.dining_tables (name, position) values
   ('โต๊ะ 1', 1), ('โต๊ะ 2', 2), ('โต๊ะ 3', 3), ('โต๊ะ 4', 4), ('โต๊ะ 5', 5)
 on conflict do nothing;
@@ -954,7 +1004,8 @@ begin
 
   select coalesce(jsonb_agg(jsonb_build_object(
       'id', si.id, 'product_name', si.product_name,
-      'quantity', si.quantity, 'price', si.price, 'total', si.total
+      'quantity', si.quantity, 'price', si.price, 'total', si.total,
+      'status', si.status
     ) order by si.created_at), '[]'::jsonb)
     into v_items
     from sale_items si where si.sale_id = v_sale.id;

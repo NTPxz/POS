@@ -45,6 +45,14 @@ export type Sale = {
   created_at: string;
 };
 
+export type SaleItemStatus = "pending" | "accepted" | "served";
+
+export const SALE_ITEM_STATUS_LABELS: Record<SaleItemStatus, string> = {
+  pending: "รอรับออเดอร์",
+  accepted: "กำลังเตรียม",
+  served: "เสิร์ฟแล้ว",
+};
+
 export type SaleItem = {
   id: string;
   sale_id: string;
@@ -55,6 +63,7 @@ export type SaleItem = {
   quantity: number;
   total: number;
   ordered_by: "staff" | "customer";
+  status: SaleItemStatus;
   created_at: string;
 };
 
@@ -165,6 +174,7 @@ export type TableOrderItem = {
   quantity: number;
   price: number;
   total: number;
+  status: SaleItemStatus;
 };
 
 export type TableOrder = {

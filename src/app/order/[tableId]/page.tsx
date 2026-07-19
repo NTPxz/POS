@@ -12,7 +12,13 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { baht, formatNumber } from "@/lib/format";
-import { Category, DiningTable, Product, TableOrder } from "@/lib/types";
+import {
+  Category,
+  DiningTable,
+  Product,
+  SALE_ITEM_STATUS_LABELS,
+  TableOrder,
+} from "@/lib/types";
 import ProductPicker from "@/components/pos/ProductPicker";
 
 type RoundItem = { product: Product; quantity: number };
@@ -255,11 +261,24 @@ export default function CustomerOrderPage({
                   </p>
                   <ul className="space-y-1.5">
                     {order.items.map((item) => (
-                      <li key={item.id} className="flex justify-between text-sm">
-                        <span className="text-neutral-600">
+                      <li key={item.id} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="min-w-0 truncate text-neutral-600">
                           {item.product_name} × {formatNumber(Number(item.quantity))}
                         </span>
-                        <span className="font-medium">{baht(Number(item.total))}</span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                              item.status === "served"
+                                ? "bg-green-50 text-green-600"
+                                : item.status === "accepted"
+                                  ? "bg-blue-50 text-blue-600"
+                                  : "bg-amber-50 text-amber-600"
+                            }`}
+                          >
+                            {SALE_ITEM_STATUS_LABELS[item.status]}
+                          </span>
+                          <span className="font-medium">{baht(Number(item.total))}</span>
+                        </span>
                       </li>
                     ))}
                   </ul>
