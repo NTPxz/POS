@@ -16,9 +16,9 @@ type Toast = {
 const TOAST_MS = 11000;
 const BATCH_MS = 900;
 // ถ้าออเดอร์ค้างสถานะ "รอรับ" นานกว่านี้ ถือว่าเลยกำหนด ต้องเตือนซ้ำ
-const STALE_PENDING_MS = 3 * 60 * 1000;
+const STALE_PENDING_MS = 60 * 1000;
 // เช็คซ้ำทุกกี่มิลลิวินาที (ตราบใดที่ยังมีรายการค้างเกินกำหนดอยู่ จะเตือนซ้ำทุกรอบนี้)
-const STALE_CHECK_INTERVAL_MS = 2 * 60 * 1000;
+const STALE_CHECK_INTERVAL_MS = 30 * 1000;
 
 // ทำนองแจ้งเตือน — เพลงสั้นๆ วนซ้ำจนยาวรวม ~10 วิ ให้ได้ยินชัดในร้านที่มีเสียงดัง
 const ORDER_NOTES = [
@@ -162,7 +162,7 @@ export default function OrderNotifications() {
     pushToast({
       id: `reminder-${Date.now()}`,
       tone: "reminder",
-      title: "ออเดอร์ค้างรับนานเกิน 3 นาที",
+      title: "ออเดอร์ค้างรับนานเกิน 1 นาที",
       message: summary,
     });
     playChime("reminder");
