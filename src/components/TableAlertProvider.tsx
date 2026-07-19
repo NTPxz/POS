@@ -11,9 +11,13 @@ type TableAlertContextValue = {
   clearAlert: () => void;
   /** ให้หน้า "/" สลับไปโหมด "เปิดโต๊ะ" ให้อัตโนมัติรอบเดียวตอนโหลด */
   focusTables: boolean;
-  /** กดแจ้งเตือน — ล้างป้าย ตั้งค่าให้ไปโหมดเปิดโต๊ะ แล้วพาไปหน้า "/" */
-  goToTables: () => void;
+  /** โต๊ะที่ต้องเปิดเข้าไปดูตรงๆ ทันที (มาจากการกด toast/badge ของโต๊ะนั้นเจาะจง) */
+  focusTableId: string | null;
+  /** กดแจ้งเตือน — ล้างป้าย ตั้งค่าให้ไปโหมดเปิดโต๊ะ แล้วพาไปหน้า "/" ระบุ tableId ถ้าจะให้เปิดโต๊ะนั้นตรงๆ เลย */
+  goToTables: (tableId?: string) => void;
   consumeFocusTables: () => void;
+  /** ให้ TablesView เรียกหลังจากเปิดโต๊ะตาม focusTableId ให้แล้ว จะได้ไม่เปิดซ้ำ */
+  consumeFocusTableId: () => void;
 };
 
 const TableAlertContext = createContext<TableAlertContextValue>({
@@ -21,8 +25,10 @@ const TableAlertContext = createContext<TableAlertContextValue>({
   triggerAlert: () => {},
   clearAlert: () => {},
   focusTables: false,
+  focusTableId: null,
   goToTables: () => {},
   consumeFocusTables: () => {},
+  consumeFocusTableId: () => {},
 });
 
 export const useTableAlert = () => useContext(TableAlertContext);
@@ -35,19 +41,34 @@ export default function TableAlertProvider({
   const router = useRouter();
   const [alert, setAlert] = useState(false);
   const [focusTables, setFocusTables] = useState(false);
+  const [focusTableId, setFocusTableId] = useState<string | null>(null);
 
   const triggerAlert = useCallback(() => setAlert(true), []);
   const clearAlert = useCallback(() => setAlert(false), []);
   const consumeFocusTables = useCallback(() => setFocusTables(false), []);
-  const goToTables = useCallback(() => {
-    setAlert(false);
-    setFocusTables(true);
-    router.push("/");
-  }, [router]);
+  const consumeFocusTableId = useCallback(() => setFocusTableId(null), []);
+  const goToTables = useCallback(
+    (tableId?: string) => {
+      setAlert(false);
+      setFocusTables(true);
+      setFocusTableId(tableId ?? null);
+      router.push("/");
+    },
+    [router]
+  );
 
   return (
     <TableAlertContext.Provider
-      value={{ alert, triggerAlert, clearAlert, focusTables, goToTables, consumeFocusTables }}
+      value={{
+        alert,
+        triggerAlert,
+        clearAlert,
+        focusTables,
+        focusTableId,
+        goToTables,
+        consumeFocusTables,
+        consumeFocusTableId,
+      }}
     >
       {children}
     </TableAlertContext.Provider>

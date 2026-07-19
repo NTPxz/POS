@@ -29,6 +29,7 @@ import {
   SaleWithItems,
 } from "@/lib/types";
 import { useProfile } from "@/components/ProfileProvider";
+import { useTableAlert } from "@/components/TableAlertProvider";
 import ProductPicker from "@/components/pos/ProductPicker";
 import PaymentFields from "@/components/pos/PaymentFields";
 
@@ -46,6 +47,7 @@ export default function TablesView({
   const supabase = useMemo(() => createClient(), []);
   const { profile } = useProfile();
   const isOwner = profile?.role === "owner";
+  const { focusTableId, consumeFocusTableId } = useTableAlert();
 
   const [tables, setTables] = useState<DiningTable[]>([]);
   const [openSales, setOpenSales] = useState<Map<string, SaleWithItems>>(new Map());
@@ -53,6 +55,15 @@ export default function TablesView({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTableId, setActiveTableId] = useState<string | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
+
+  // มาจากการกด toast/badge แจ้งเตือนของโต๊ะที่เจาะจง — เปิดโต๊ะนั้นให้ตรงๆ ทันทีที่โหลดโต๊ะเสร็จ
+  useEffect(() => {
+    if (!focusTableId) return;
+    if (tables.some((t) => t.id === focusTableId)) {
+      setActiveTableId(focusTableId);
+      consumeFocusTableId();
+    }
+  }, [focusTableId, tables, consumeFocusTableId]);
 
   const loadTables = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -724,7 +735,7 @@ function OrderPanel({
   );
 }
 
-/** นับถอยหลังรอบละ 30 วิ ตรงกับรอบแจ้งเตือนซ้ำใน OrderNotifications — ให้พนักงานเห็นว่าใกล้โดนเตือนซ้ำแค่ไหน */
+/** นับถอยหลังรอบละ PENDING_ORDER_REMINDER_MS ตรงกับรอบแจ้งเตือนซ้ำใน OrderNotifications — ให้พนักงานเห็นว่าใกล้โดนเตือนซ้ำแค่ไหน */
 function PendingCountdown({ createdAt, now }: { createdAt: string; now: number }) {
   const elapsed = now - new Date(createdAt).getTime();
   const remainingMs =

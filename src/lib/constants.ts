@@ -3,4 +3,4 @@
  * ใช้ทั้งฝั่งนับถอยหลังในหน้าเปิดโต๊ะ และฝั่งแจ้งเตือนซ้ำใน OrderNotifications
  * ให้สองจุดนี้ตรงกันเสมอ
  */
-export const PENDING_ORDER_REMINDER_MS = 30 * 1000;
+export const PENDING_ORDER_REMINDER_MS = 60 * 1000;

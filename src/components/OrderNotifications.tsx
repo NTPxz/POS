@@ -12,6 +12,8 @@ type Toast = {
   tone: "order" | "bill" | "reminder";
   title: string;
   message: string;
+  /** โต๊ะที่เกี่ยวข้องเจาะจง กดแล้วเปิดโต๊ะนั้นตรงๆ ได้เลย (reminder อาจมีหลายโต๊ะเลยไม่มีค่านี้) */
+  tableId?: string;
 };
 
 const TOAST_MS = 11000;
@@ -118,7 +120,7 @@ export default function OrderNotifications() {
     [triggerAlert]
   );
 
-  const resolveTableName = useCallback(
+  const resolveTable = useCallback(
     async (saleId: string) => {
       const { data } = await supabase
         .from("sales")
@@ -127,7 +129,7 @@ export default function OrderNotifications() {
         .maybeSingle();
       const joined = data?.dining_tables as { name?: string } | { name?: string }[] | null;
       const name = Array.isArray(joined) ? joined[0]?.name : joined?.name;
-      return name ?? "โต๊ะ";
+      return { id: data?.table_id as string | undefined, name: name ?? "โต๊ะ" };
     },
     [supabase]
   );
@@ -161,7 +163,7 @@ export default function OrderNotifications() {
     pushToast({
       id: `reminder-${Date.now()}`,
       tone: "reminder",
-      title: "ออเดอร์ค้างรับนานเกิน 30 วิ",
+      title: "ออเดอร์ค้างรับนานเกิน 1 นาที",
       message: summary,
     });
     playChime("reminder");
@@ -179,17 +181,18 @@ export default function OrderNotifications() {
       const entry = pendingRef.current.get(saleId);
       if (!entry) return;
       pendingRef.current.delete(saleId);
-      const tableName = await resolveTableName(saleId);
+      const table = await resolveTable(saleId);
       const summary = entry.items.map((it) => `${it.name} x${it.qty}`).join(", ");
       pushToast({
         id: `order-${saleId}-${Date.now()}`,
         tone: "order",
-        title: `ลูกค้าสั่งอาหาร • ${tableName}`,
+        title: `ลูกค้าสั่งอาหาร • ${table.name}`,
         message: summary,
+        tableId: table.id,
       });
       playChime("order");
     },
-    [playChime, pushToast, resolveTableName]
+    [playChime, pushToast, resolveTable]
   );
 
   useEffect(() => {
@@ -225,12 +228,13 @@ export default function OrderNotifications() {
           if (row.status !== "open" || !row.bill_requested_at) return;
           if (notifiedBillRef.current.has(row.id)) return;
           notifiedBillRef.current.add(row.id);
-          const tableName = await resolveTableName(row.id);
+          const table = await resolveTable(row.id);
           pushToast({
             id: `bill-${row.id}-${Date.now()}`,
             tone: "bill",
-            title: `เรียกเก็บเงิน • ${tableName}`,
+            title: `เรียกเก็บเงิน • ${table.name}`,
             message: "ลูกค้าพร้อมจ่ายแล้ว",
+            tableId: table.id,
           });
           playChime("bill");
         }
@@ -240,7 +244,7 @@ export default function OrderNotifications() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [profile, supabase, flushOrder, playChime, pushToast, resolveTableName]);
+  }, [profile, supabase, flushOrder, playChime, pushToast, resolveTable]);
 
   if (!profile) return null;
 
@@ -276,7 +280,7 @@ export default function OrderNotifications() {
           </div>
           <button
             className="min-w-0 flex-1 text-left"
-            onClick={() => goToTables()}
+            onClick={() => goToTables(t.tableId)}
           >
             <p
               className={`font-semibold ${
