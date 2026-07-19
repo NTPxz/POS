@@ -79,7 +79,8 @@ export default function TablesView({
           .from("sales")
           .select("*, sale_items(*)")
           .eq("status", "open")
-          .not("table_id", "is", null),
+          .not("table_id", "is", null)
+          .order("created_at", { ascending: false, foreignTable: "sale_items" }),
       ]);
       if (tablesRes.error) throw tablesRes.error;
       if (salesRes.error) throw salesRes.error;

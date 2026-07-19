@@ -1016,7 +1016,7 @@ begin
       'id', si.id, 'product_name', si.product_name,
       'quantity', si.quantity, 'price', si.price, 'total', si.total,
       'status', si.status
-    ) order by si.created_at), '[]'::jsonb)
+    ) order by si.created_at desc), '[]'::jsonb)
     into v_items
     from sale_items si where si.sale_id = v_sale.id;
 
