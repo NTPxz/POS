@@ -12,12 +12,12 @@ type PromotionRow = Promotion & {
 };
 
 const TYPE_LABELS: Record<PromotionType, string> = {
-  buy_x_get_cheapest_free: "ครบ N ชิ้น ลดเท่าเมนูถูกสุด (เหมือนแถม 1)",
+  buy_x_get_fixed_discount: "ครบ N ชิ้น ลดตายตัว X บาท",
 };
 
 function describePromotion(p: Promotion): string {
-  if (p.type === "buy_x_get_cheapest_free") {
-    return `สั่งเมนูที่เลือกไว้ครบทุก ${p.threshold_qty ?? "-"} ชิ้น (รวมทั้งบิลของโต๊ะ) ลดราคาอัตโนมัติเท่ากับเมนูที่ถูกที่สุดในกลุ่มนี้ — ครบกี่รอบคูณส่วนลดตามไปด้วย`;
+  if (p.type === "buy_x_get_fixed_discount") {
+    return `สั่งเมนูที่เลือกไว้ครบทุก ${p.threshold_qty ?? "-"} ชิ้น (รวมทั้งบิลของโต๊ะ) ลดราคาอัตโนมัติ ${p.discount_amount ?? "-"} บาท — ครบกี่รอบคูณส่วนลดตามไปด้วย`;
   }
   return "";
 }
@@ -120,7 +120,7 @@ function PromotionsPageContent() {
       <div className="card mb-4 flex items-start gap-3 p-4 text-sm text-neutral-600">
         <Tag className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" strokeWidth={2} />
         <p>
-          เลือกเมนูที่เข้าร่วมโปรโมชั่นเองได้ — ระบบจะนับจำนวน/หาราคาถูกสุดเฉพาะเมนูที่เลือกไว้เท่านั้น
+          เลือกเมนูที่เข้าร่วมโปรโมชั่นเองได้ — ระบบจะนับจำนวนเฉพาะเมนูที่เลือกไว้เท่านั้น
           (ไม่นับสินค้าอื่นในบิล) คำนวณส่วนลดอัตโนมัติทุกครั้งที่มีการสั่ง/แก้ไขออเดอร์ในโหมด &ldquo;เปิดโต๊ะ&rdquo;
           ทั้งพนักงานคีย์เองและลูกค้าสั่งผ่าน QR — ลูกค้าจะเห็นส่วนลดที่ได้ในหน้าสั่งอาหารของตัวเองด้วย
         </p>
@@ -235,9 +235,12 @@ function PromotionModal({
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [name, setName] = useState(promotion?.name ?? "");
-  const [type, setType] = useState<PromotionType>(promotion?.type ?? "buy_x_get_cheapest_free");
+  const [type, setType] = useState<PromotionType>(promotion?.type ?? "buy_x_get_fixed_discount");
   const [thresholdQty, setThresholdQty] = useState(
     promotion?.threshold_qty ? String(promotion.threshold_qty) : "10"
+  );
+  const [discountAmount, setDiscountAmount] = useState(
+    promotion?.discount_amount ? String(promotion.discount_amount) : "10"
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     () => new Set(promotion?.promotion_products.map((pp) => pp.product_id) ?? [])
@@ -264,13 +267,25 @@ function PromotionModal({
       setSaving(false);
       return;
     }
+    const amount = parseFloat(discountAmount);
+    if (!amount || amount <= 0) {
+      setError("กรอกจำนวนเงินส่วนลดให้ถูกต้อง");
+      setSaving(false);
+      return;
+    }
     if (selectedIds.size === 0) {
       setError("เลือกอย่างน้อย 1 เมนูที่ให้เข้าร่วมโปรโมชั่นนี้");
       setSaving(false);
       return;
     }
 
-    const payload = { name: name.trim(), type, threshold_qty: qty, is_active: true };
+    const payload = {
+      name: name.trim(),
+      type,
+      threshold_qty: qty,
+      discount_amount: amount,
+      is_active: true,
+    };
     let promotionId = promotion?.id;
 
     if (promotionId) {
@@ -364,20 +379,34 @@ function PromotionModal({
             </select>
           </Field>
 
-          {type === "buy_x_get_cheapest_free" && (
+          {type === "buy_x_get_fixed_discount" && (
             <>
-              <Field label="สั่งครบกี่ชิ้น (เฉพาะเมนูที่เลือก) ต่อ 1 รอบส่วนลด *">
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  step={1}
-                  className="input"
-                  value={thresholdQty}
-                  onChange={(e) => setThresholdQty(e.target.value)}
-                  required
-                />
-              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="สั่งครบกี่ชิ้นต่อ 1 รอบส่วนลด *">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    step={1}
+                    className="input"
+                    value={thresholdQty}
+                    onChange={(e) => setThresholdQty(e.target.value)}
+                    required
+                  />
+                </Field>
+                <Field label="ลดกี่บาทต่อรอบ *">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="any"
+                    className="input"
+                    value={discountAmount}
+                    onChange={(e) => setDiscountAmount(e.target.value)}
+                    required
+                  />
+                </Field>
+              </div>
 
               <Field label={`เลือกเมนูที่เข้าร่วม * (เลือกแล้ว ${selectedIds.size} รายการ)`}>
                 <div className="max-h-64 space-y-1 overflow-y-auto rounded-xl border border-neutral-200 p-2">
@@ -410,8 +439,8 @@ function PromotionModal({
           )}
 
           <p className="rounded-xl bg-neutral-50 px-4 py-2.5 text-sm text-neutral-500">
-            ระบบจะนับจำนวน/หาราคาถูกสุดเฉพาะเมนูที่เลือกไว้ด้านบนเท่านั้น แล้วลดราคาอัตโนมัติเท่ากับเมนูที่ถูกที่สุด
-            ในกลุ่มนี้ ทุกครั้งที่จำนวนชิ้นรวมครบตามที่ตั้งไว้ (ครบ 2 รอบ ลด 2 เท่า ฯลฯ)
+            ระบบจะนับจำนวนเฉพาะเมนูที่เลือกไว้ด้านบนเท่านั้น แล้วลดราคาอัตโนมัติตามจำนวนเงินที่ตั้งไว้
+            ทุกครั้งที่จำนวนชิ้นรวมครบตามที่ตั้งไว้ (ครบ 2 รอบ ลด 2 เท่า ฯลฯ)
           </p>
 
           {error && (

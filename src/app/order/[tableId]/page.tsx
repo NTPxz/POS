@@ -229,10 +229,10 @@ export default function CustomerOrderPage({
               <Percent className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} />
               <div className="min-w-0">
                 <p className="text-sm font-semibold">{p.name}</p>
-                {p.type === "buy_x_get_cheapest_free" && (
+                {p.type === "buy_x_get_fixed_discount" && (
                   <>
                     <p className="mt-0.5 text-xs text-brand-50">
-                      สั่งครบทุก {p.threshold_qty} ชิ้น รับส่วนลดฟรี 1 ชิ้น (เมนูที่ถูกที่สุดในกลุ่มนี้) อัตโนมัติ
+                      สั่งครบทุก {p.threshold_qty} ชิ้น รับส่วนลด {p.discount_amount} บาท อัตโนมัติ
                     </p>
                     <p className="mt-1 text-xs text-brand-50/90">
                       ใช้ได้กับ:{" "}

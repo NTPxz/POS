@@ -187,13 +187,14 @@ export type TableOrder = {
   bill_requested: boolean;
 };
 
-export type PromotionType = "buy_x_get_cheapest_free";
+export type PromotionType = "buy_x_get_fixed_discount";
 
 export type Promotion = {
   id: string;
   name: string;
   type: PromotionType;
   threshold_qty: number | null;
+  discount_amount: number | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;

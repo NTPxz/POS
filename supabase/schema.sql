@@ -1232,15 +1232,16 @@ create policy "authenticated delete product images" on storage.objects
   using (bucket_id = 'product-images');
 
 -- ============================================================
--- ระบบโปรโมชั่น (owner จัดการ) เริ่มด้วยแบบ "ครบ N ชิ้น ลดเท่าราคาเมนูถูกสุด"
+-- ระบบโปรโมชั่น (owner จัดการ) เริ่มด้วยแบบ "ครบ N ชิ้น ลดตายตัว X บาท"
 -- ออกแบบให้ขยาย type อื่นเพิ่มได้ในอนาคต
 -- ============================================================
 create table if not exists public.promotions (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  type text not null default 'buy_x_get_cheapest_free'
-    check (type in ('buy_x_get_cheapest_free')),
+  type text not null default 'buy_x_get_fixed_discount'
+    check (type in ('buy_x_get_fixed_discount')),
   threshold_qty integer,
+  discount_amount numeric,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -1301,7 +1302,7 @@ create policy "owner delete promotion_products" on public.promotion_products
   for delete to authenticated using (public.is_owner());
 
 -- คำนวณส่วนลดโปรโมชั่นทั้งหมดที่ใช้ได้กับบิลนี้ ณ ตอนนี้ (เรียกใหม่ทุกครั้งที่รายการเปลี่ยน)
--- นับจำนวน/หาราคาถูกสุดเฉพาะสินค้าที่เลือกไว้ให้โปรโมชั่นนั้นๆ เท่านั้น (ไม่ใช่ทั้งบิล)
+-- นับจำนวนเฉพาะสินค้าที่เลือกไว้ให้โปรโมชั่นนั้นๆ เท่านั้น (ไม่ใช่ทั้งบิล) ลดตายตัวตาม discount_amount
 create or replace function public.calculate_promo_discount(p_sale_id uuid)
 returns numeric
 language plpgsql
@@ -1312,22 +1313,24 @@ declare
   v_discount numeric := 0;
   v_promo record;
   v_qty numeric;
-  v_cheapest numeric;
 begin
   for v_promo in
     select * from promotions
-    where is_active = true and type = 'buy_x_get_cheapest_free' and coalesce(threshold_qty, 0) > 0
+    where is_active = true
+      and type = 'buy_x_get_fixed_discount'
+      and coalesce(threshold_qty, 0) > 0
+      and coalesce(discount_amount, 0) > 0
   loop
-    select coalesce(sum(si.quantity), 0), min(si.price)
-      into v_qty, v_cheapest
+    select coalesce(sum(si.quantity), 0)
+      into v_qty
       from sale_items si
       where si.sale_id = p_sale_id
         and si.product_id in (
           select pp.product_id from promotion_products pp where pp.promotion_id = v_promo.id
         );
 
-    if v_qty > 0 and v_cheapest is not null then
-      v_discount := v_discount + floor(v_qty / v_promo.threshold_qty) * v_cheapest;
+    if v_qty > 0 then
+      v_discount := v_discount + floor(v_qty / v_promo.threshold_qty) * v_promo.discount_amount;
     end if;
   end loop;
 
