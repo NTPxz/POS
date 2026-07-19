@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, Receipt, RefreshCw } from "lucide-react";
+import { AlertCircle, Pencil, Receipt, RefreshCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   baht,
@@ -32,6 +32,7 @@ function SalesPageContent() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
 
   const loadSales = useCallback(async () => {
     setLoading(true);
@@ -79,6 +80,22 @@ function SalesPageContent() {
       return;
     }
     loadSales();
+  }
+
+  async function saveCustomerName(saleId: string, name: string) {
+    const trimmed = name.trim();
+    setSales((prev) =>
+      prev.map((s) => (s.id === saleId ? { ...s, customer_name: trimmed || null } : s))
+    );
+    setEditingNameId(null);
+    const { error } = await supabase
+      .from("sales")
+      .update({ customer_name: trimmed || null })
+      .eq("id", saleId);
+    if (error) {
+      window.alert(`บันทึกชื่อลูกค้าไม่สำเร็จ: ${error.message}`);
+      loadSales();
+    }
   }
 
   return (
@@ -154,11 +171,11 @@ function SalesPageContent() {
             const voided = sale.status === "voided";
             return (
               <li key={sale.id} className={`card ${voided ? "opacity-60" : ""}`}>
-                <button
-                  className="flex w-full items-center justify-between gap-3 p-4 text-left"
+                <div
+                  className="flex w-full cursor-pointer items-center justify-between gap-3 p-4 text-left"
                   onClick={() => setExpanded(isOpen ? null : sale.id)}
                 >
-                  <div>
+                  <div className="min-w-0">
                     <p className="font-semibold">
                       {billNumber(sale.sale_number)}{" "}
                       {sale.dining_tables && (
@@ -172,6 +189,32 @@ function SalesPageContent() {
                         </span>
                       )}
                     </p>
+                    {editingNameId === sale.id ? (
+                      <input
+                        autoFocus
+                        className="input mt-1 py-1 text-sm"
+                        maxLength={100}
+                        defaultValue={sale.customer_name ?? ""}
+                        placeholder="ชื่อลูกค้า"
+                        onClick={(e) => e.stopPropagation()}
+                        onBlur={(e) => saveCustomerName(sale.id, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") e.currentTarget.blur();
+                          if (e.key === "Escape") setEditingNameId(null);
+                        }}
+                      />
+                    ) : (
+                      <button
+                        className="mt-0.5 inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-brand-600"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingNameId(sale.id);
+                        }}
+                      >
+                        <Pencil className="h-3 w-3" strokeWidth={2} />
+                        {sale.customer_name || "ใส่ชื่อลูกค้า"}
+                      </button>
+                    )}
                     <p className="text-sm text-neutral-500">
                       {formatDateTime(sale.created_at)} ·{" "}
                       {PAYMENT_LABELS[sale.payment_method] ?? sale.payment_method}{" "}
@@ -187,7 +230,7 @@ function SalesPageContent() {
                       กำไร {baht(Number(sale.total) - Number(sale.cost_total))}
                     </p>
                   </div>
-                </button>
+                </div>
 
                 {isOpen && (
                   <div className="border-t border-neutral-100 px-4 py-3">

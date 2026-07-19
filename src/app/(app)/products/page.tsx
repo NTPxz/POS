@@ -161,6 +161,7 @@ function ProductsPageContent() {
         placeholder="ค้นหาชื่อสินค้า หรือบาร์โค้ด..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
+        maxLength={100}
       />
 
       {loading ? (
@@ -512,6 +513,7 @@ function ProductModal({
               onChange={(e) => set({ name: e.target.value })}
               required
               autoFocus
+              maxLength={100}
             />
           </Field>
 
@@ -569,6 +571,7 @@ function ProductModal({
               value={form.barcode}
               onChange={(e) => set({ barcode: e.target.value })}
               placeholder="สแกนหรือพิมพ์บาร์โค้ด"
+              maxLength={50}
             />
           </Field>
 
@@ -642,6 +645,7 @@ function ProductModal({
               value={form.image_url}
               onChange={(e) => set({ image_url: e.target.value })}
               placeholder="หรือวางลิงก์รูปภาพเอง (https://...)"
+              maxLength={2000}
             />
             {uploadError && (
               <p className="mt-1.5 text-xs text-red-600">{uploadError}</p>
@@ -721,6 +725,7 @@ function CategoryModal({
               placeholder="ชื่อหมวดหมู่ใหม่..."
               value={name}
               onChange={(e) => setName(e.target.value)}
+              maxLength={50}
             />
             <button
               type="submit"

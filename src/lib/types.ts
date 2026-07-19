@@ -41,6 +41,7 @@ export type Sale = {
   status: SaleStatus;
   voided_at: string | null;
   bill_requested_at: string | null;
+  customer_name: string | null;
   user_id: string | null;
   created_at: string;
 };

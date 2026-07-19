@@ -198,6 +198,7 @@ function IncomePageContent() {
           placeholder="ค้นหารายการ หรือหมายเหตุ..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          maxLength={100}
         />
         <div className="no-scrollbar flex gap-2 overflow-x-auto">
           <CategoryChip
@@ -490,6 +491,7 @@ function IncomeModal({
               placeholder="เช่น เงินลงทุนเพิ่ม, ค่าบริการพิเศษ"
               required
               autoFocus
+              maxLength={150}
             />
           </Field>
 
@@ -538,6 +540,7 @@ function IncomeModal({
               value={form.note}
               onChange={(e) => set({ note: e.target.value })}
               placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)"
+              maxLength={500}
             />
           </Field>
 
@@ -709,6 +712,7 @@ function ManualSaleModal({
               value={form.note}
               onChange={(e) => set({ note: e.target.value })}
               placeholder="เช่น ขายผ่าน Line, โทรสั่งของ"
+              maxLength={300}
             />
           </Field>
 
@@ -789,6 +793,7 @@ function IncomeCategoryModal({
               placeholder="ชื่อหมวดหมู่ใหม่..."
               value={name}
               onChange={(e) => setName(e.target.value)}
+              maxLength={50}
             />
             <button
               type="submit"

@@ -6,6 +6,8 @@ import {
   ArrowLeft,
   Bell,
   CheckCircle2,
+  Clock,
+  Pencil,
   Plus,
   QrCode,
   RefreshCw,
@@ -16,6 +18,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { baht, formatDateTime, formatNumber } from "@/lib/format";
+import { PENDING_ORDER_REMINDER_MS } from "@/lib/constants";
 import {
   Category,
   DiningTable,
@@ -206,6 +209,11 @@ export default function TablesView({
                 </span>
                 {occupied ? (
                   <>
+                    {sale!.customer_name && (
+                      <span className="max-w-full truncate text-xs font-medium text-neutral-600">
+                        {sale!.customer_name}
+                      </span>
+                    )}
                     <span
                       className={`text-sm font-semibold ${billRequested ? "text-amber-600" : "text-brand-600"}`}
                     >
@@ -260,10 +268,31 @@ function TableOrderSession({
   const [editError, setEditError] = useState<string | null>(null);
   const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [editingCustomerName, setEditingCustomerName] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const roundTotal = round.reduce((s, i) => s + i.product.price * i.quantity, 0);
   const roundCount = round.reduce((s, i) => s + i.quantity, 0);
   const existingTotal = sale ? Number(sale.subtotal) : 0;
+
+  async function saveCustomerName(name: string) {
+    if (!sale) return;
+    const trimmed = name.trim();
+    setEditingCustomerName(false);
+    const { error } = await supabase
+      .from("sales")
+      .update({ customer_name: trimmed || null })
+      .eq("id", sale.id);
+    if (error) {
+      window.alert(`บันทึกชื่อลูกค้าไม่สำเร็จ: ${error.message}`);
+    }
+    onChanged();
+  }
 
   function addToRound(product: Product) {
     setRound((prev) => {
@@ -349,12 +378,35 @@ function TableOrderSession({
           >
             <ArrowLeft className="h-5 w-5" strokeWidth={2} />
           </button>
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="font-bold">{table.name}</p>
             <p className="text-xs text-neutral-500">
               {sale ? `ยอดสั่งแล้ว ${baht(existingTotal)}` : "ยังไม่มีออเดอร์"}
             </p>
           </div>
+          {sale &&
+            (editingCustomerName ? (
+              <input
+                autoFocus
+                className="input w-40 py-1.5 text-sm"
+                maxLength={100}
+                defaultValue={sale.customer_name ?? ""}
+                placeholder="ชื่อลูกค้า"
+                onBlur={(e) => saveCustomerName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                  if (e.key === "Escape") setEditingCustomerName(false);
+                }}
+              />
+            ) : (
+              <button
+                className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100 hover:text-brand-600"
+                onClick={() => setEditingCustomerName(true)}
+              >
+                <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
+                {sale.customer_name || "ใส่ชื่อลูกค้า"}
+              </button>
+            ))}
         </div>
 
         <ProductPicker
@@ -382,6 +434,7 @@ function TableOrderSession({
           statusBusyId={statusBusyId}
           statusError={statusError}
           onAdvanceStatus={advanceItemStatus}
+          now={now}
         />
       </div>
 
@@ -427,6 +480,7 @@ function TableOrderSession({
               statusBusyId={statusBusyId}
               statusError={statusError}
               onAdvanceStatus={advanceItemStatus}
+              now={now}
             />
           </div>
         </div>
@@ -464,6 +518,7 @@ function OrderPanel({
   statusBusyId,
   statusError,
   onAdvanceStatus,
+  now,
 }: {
   table: DiningTable;
   sale: SaleWithItems | null;
@@ -480,6 +535,7 @@ function OrderPanel({
   statusBusyId: string | null;
   statusError: string | null;
   onAdvanceStatus: (saleItemId: string, newStatus: SaleItemStatus) => void;
+  now: number;
 }) {
   const existingTotal = sale ? Number(sale.subtotal) : 0;
 
@@ -539,16 +595,21 @@ function OrderPanel({
                       </div>
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-2 border-t border-neutral-100 pt-2">
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          item.status === "served"
-                            ? "bg-green-50 text-green-600"
-                            : item.status === "accepted"
-                              ? "bg-blue-50 text-blue-600"
-                              : "bg-amber-50 text-amber-600"
-                        }`}
-                      >
-                        {SALE_ITEM_STATUS_LABELS[item.status]}
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            item.status === "served"
+                              ? "bg-green-50 text-green-600"
+                              : item.status === "accepted"
+                                ? "bg-blue-50 text-blue-600"
+                                : "bg-amber-50 text-amber-600"
+                          }`}
+                        >
+                          {SALE_ITEM_STATUS_LABELS[item.status]}
+                        </span>
+                        {item.status === "pending" && (
+                          <PendingCountdown createdAt={item.created_at} now={now} />
+                        )}
                       </span>
                       {item.status !== "served" && (
                         <button
@@ -660,6 +721,26 @@ function OrderPanel({
         </button>
       </div>
     </>
+  );
+}
+
+/** นับถอยหลังรอบละ 30 วิ ตรงกับรอบแจ้งเตือนซ้ำใน OrderNotifications — ให้พนักงานเห็นว่าใกล้โดนเตือนซ้ำแค่ไหน */
+function PendingCountdown({ createdAt, now }: { createdAt: string; now: number }) {
+  const elapsed = now - new Date(createdAt).getTime();
+  const remainingMs =
+    PENDING_ORDER_REMINDER_MS - (((elapsed % PENDING_ORDER_REMINDER_MS) + PENDING_ORDER_REMINDER_MS) % PENDING_ORDER_REMINDER_MS);
+  const seconds = Math.max(1, Math.ceil(remainingMs / 1000));
+  const urgent = seconds <= 10;
+
+  return (
+    <span
+      className={`flex items-center gap-1 text-xs font-semibold tabular-nums ${
+        urgent ? "text-red-600" : "text-neutral-400"
+      }`}
+    >
+      <Clock className="h-3 w-3" strokeWidth={2} />
+      {seconds}s
+    </span>
   );
 }
 
@@ -803,6 +884,7 @@ function TableCheckoutModal({
               placeholder="หมายเหตุ (ถ้ามี)"
               value={note}
               onChange={(e) => setNote(e.target.value)}
+              maxLength={300}
             />
           </div>
 
@@ -889,6 +971,7 @@ function TableManageModal({
               placeholder="ชื่อโต๊ะใหม่ เช่น โต๊ะ 6"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              maxLength={30}
             />
             <button
               type="submit"

@@ -358,6 +358,7 @@ function CheckoutModal({
               placeholder="หมายเหตุ (ถ้ามี)"
               value={note}
               onChange={(e) => setNote(e.target.value)}
+              maxLength={300}
             />
           </div>
 

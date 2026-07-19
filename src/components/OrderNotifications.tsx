@@ -5,6 +5,7 @@ import { AlertTriangle, Bell, Receipt, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/components/ProfileProvider";
 import { useTableAlert } from "@/components/TableAlertProvider";
+import { PENDING_ORDER_REMINDER_MS } from "@/lib/constants";
 
 type Toast = {
   id: string;
@@ -15,10 +16,8 @@ type Toast = {
 
 const TOAST_MS = 11000;
 const BATCH_MS = 900;
-// ถ้าออเดอร์ค้างสถานะ "รอรับ" นานกว่านี้ ถือว่าเลยกำหนด ต้องเตือนซ้ำ
-const STALE_PENDING_MS = 60 * 1000;
 // เช็คซ้ำทุกกี่มิลลิวินาที (ตราบใดที่ยังมีรายการค้างเกินกำหนดอยู่ จะเตือนซ้ำทุกรอบนี้)
-const STALE_CHECK_INTERVAL_MS = 30 * 1000;
+const STALE_CHECK_INTERVAL_MS = 10 * 1000;
 
 // ทำนองแจ้งเตือน — เพลงสั้นๆ วนซ้ำจนยาวรวม ~10 วิ ให้ได้ยินชัดในร้านที่มีเสียงดัง
 const ORDER_NOTES = [
@@ -134,7 +133,7 @@ export default function OrderNotifications() {
   );
 
   const checkStalePending = useCallback(async () => {
-    const cutoff = new Date(Date.now() - STALE_PENDING_MS).toISOString();
+    const cutoff = new Date(Date.now() - PENDING_ORDER_REMINDER_MS).toISOString();
     const { data } = await supabase
       .from("sale_items")
       .select("id, sales!inner(status, dining_tables(name))")
@@ -162,7 +161,7 @@ export default function OrderNotifications() {
     pushToast({
       id: `reminder-${Date.now()}`,
       tone: "reminder",
-      title: "ออเดอร์ค้างรับนานเกิน 1 นาที",
+      title: "ออเดอร์ค้างรับนานเกิน 30 วิ",
       message: summary,
     });
     playChime("reminder");

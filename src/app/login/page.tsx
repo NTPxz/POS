@@ -81,6 +81,7 @@ export default function LoginPage() {
               onChange={(e) => setIdentifier(e.target.value)}
               required
               autoComplete="username"
+              maxLength={100}
             />
           </div>
           <div>
@@ -95,6 +96,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="current-password"
+              maxLength={72}
             />
           </div>
 

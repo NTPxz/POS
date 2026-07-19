@@ -891,6 +891,16 @@ create trigger log_profiles after update on public.profiles
 -- ============================================================
 alter table public.sales add column if not exists bill_requested_at timestamptz;
 
+-- ชื่อลูกค้าประจำบิล (ระบุได้ทั้งหน้าโต๊ะและหน้าประวัติขาย ไม่บังคับ)
+alter table public.sales add column if not exists customer_name text;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'sales_customer_name_length') then
+    alter table public.sales
+      add constraint sales_customer_name_length check (customer_name is null or char_length(customer_name) <= 100);
+  end if;
+end $$;
+
 -- เมนูสำหรับลูกค้า: view ที่ซ่อนต้นทุน (cost) ไว้ (แทนด้วย 0) โครงสร้าง
 -- คอลัมน์เหมือน products ทุกอย่างเพื่อให้ frontend ใช้ type Product เดียวกันได้
 create or replace view public.public_menu as

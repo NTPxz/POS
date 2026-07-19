@@ -154,6 +154,7 @@ function ExpensesPageContent() {
           placeholder="ค้นหารายการ หรือหมายเหตุ..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          maxLength={100}
         />
         <div className="no-scrollbar flex gap-2 overflow-x-auto">
           <CategoryChip
@@ -436,6 +437,7 @@ function ExpenseModal({
               placeholder="เช่น ซื้อวัตถุดิบ, ค่าเช่าร้านเดือนนี้"
               required
               autoFocus
+              maxLength={150}
             />
           </Field>
 
@@ -484,6 +486,7 @@ function ExpenseModal({
               value={form.note}
               onChange={(e) => set({ note: e.target.value })}
               placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)"
+              maxLength={500}
             />
           </Field>
 
@@ -563,6 +566,7 @@ function ExpenseCategoryModal({
               className="input flex-1"
               placeholder="ชื่อหมวดหมู่ใหม่..."
               value={name}
+              maxLength={50}
               onChange={(e) => setName(e.target.value)}
             />
             <button

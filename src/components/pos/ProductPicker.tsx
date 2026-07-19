@@ -36,6 +36,7 @@ export default function ProductPicker({
           className="input"
           placeholder="ค้นหาชื่อสินค้า หรือสแกน/พิมพ์บาร์โค้ด..."
           value={search}
+          maxLength={100}
           onChange={(e) => setSearch(e.target.value)}
           onKeyDown={(e) => {
             // สแกนบาร์โค้ดแล้วกด Enter — ถ้าตรงพอดี 1 ชิ้น เพิ่มลงตะกร้าเลย

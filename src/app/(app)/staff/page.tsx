@@ -325,6 +325,7 @@ function NameInput({
         disabled={disabled}
         onChange={(e) => setText(e.target.value)}
         onBlur={() => onSave(text)}
+        maxLength={100}
       />
     </div>
   );
@@ -359,6 +360,7 @@ function PhoneInput({
         disabled={disabled}
         onChange={(e) => setText(e.target.value)}
         onBlur={() => onSave(text)}
+        maxLength={20}
       />
     </div>
   );
@@ -460,6 +462,7 @@ function AddStaffModal({
               onChange={(e) => set({ fullName: e.target.value })}
               placeholder="ไม่บังคับ"
               autoFocus
+              maxLength={100}
             />
           </Field>
 
@@ -471,6 +474,7 @@ function AddStaffModal({
               onChange={(e) => set({ phone: e.target.value })}
               placeholder="0812345678"
               required
+              maxLength={20}
             />
           </Field>
 
@@ -482,6 +486,7 @@ function AddStaffModal({
               onChange={(e) => set({ password: e.target.value })}
               placeholder="ตั้งรหัสผ่านให้พนักงาน"
               minLength={6}
+              maxLength={72}
               required
             />
           </Field>
@@ -493,6 +498,7 @@ function AddStaffModal({
               value={form.email}
               onChange={(e) => set({ email: e.target.value })}
               placeholder="เว้นว่างได้ถ้าใช้แค่เบอร์โทรล็อกอิน"
+              maxLength={100}
             />
           </Field>
 
@@ -596,6 +602,7 @@ function ResetPasswordModal({
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   minLength={6}
+                  maxLength={72}
                   required
                   autoFocus
                 />

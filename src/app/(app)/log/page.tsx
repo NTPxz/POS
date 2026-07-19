@@ -122,6 +122,7 @@ function LogPageContent() {
         placeholder="ค้นหาข้อความ, อีเมลผู้ทำรายการ, หรือตาราง..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
+        maxLength={100}
       />
 
       <div className="mb-4 card p-4">
