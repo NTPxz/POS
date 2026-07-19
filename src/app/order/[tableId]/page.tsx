@@ -38,7 +38,9 @@ export default function CustomerOrderPage({
   const [table, setTable] = useState<DiningTable | null | undefined>(undefined);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const [promotions, setPromotions] = useState<
+    (Promotion & { promotion_products: { product_id: string }[] })[]
+  >([]);
   const [order, setOrder] = useState<TableOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -70,7 +72,10 @@ export default function CustomerOrderPage({
           .maybeSingle(),
         supabase.from("public_menu").select("*").order("name"),
         supabase.from("categories").select("*").order("position"),
-        supabase.from("promotions").select("*").eq("is_active", true),
+        supabase
+          .from("promotions")
+          .select("*, promotion_products(product_id)")
+          .eq("is_active", true),
       ]);
       if (tableRes.error) throw tableRes.error;
       if (menuRes.error) throw menuRes.error;
@@ -78,7 +83,9 @@ export default function CustomerOrderPage({
       setTable((tableRes.data as DiningTable) ?? null);
       setProducts((menuRes.data as Product[]) ?? []);
       setCategories((catRes.data as Category[]) ?? []);
-      setPromotions((promoRes.data as Promotion[]) ?? []);
+      setPromotions(
+        (promoRes.data as (Promotion & { promotion_products: { product_id: string }[] })[]) ?? []
+      );
       await loadOrder();
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ");
@@ -223,9 +230,20 @@ export default function CustomerOrderPage({
               <div className="min-w-0">
                 <p className="text-sm font-semibold">{p.name}</p>
                 {p.type === "buy_x_get_cheapest_free" && (
-                  <p className="mt-0.5 text-xs text-brand-50">
-                    สั่งครบทุก {p.threshold_qty} ชิ้น รับส่วนลดฟรี 1 ชิ้น (เมนูที่ถูกที่สุดในบิล) อัตโนมัติ
-                  </p>
+                  <>
+                    <p className="mt-0.5 text-xs text-brand-50">
+                      สั่งครบทุก {p.threshold_qty} ชิ้น รับส่วนลดฟรี 1 ชิ้น (เมนูที่ถูกที่สุดในกลุ่มนี้) อัตโนมัติ
+                    </p>
+                    <p className="mt-1 text-xs text-brand-50/90">
+                      ใช้ได้กับ:{" "}
+                      {p.promotion_products
+                        .map(
+                          (pp) =>
+                            products.find((prod) => prod.id === pp.product_id)?.name ?? "เมนูนี้"
+                        )
+                        .join(", ")}
+                    </p>
+                  </>
                 )}
               </div>
             </div>

@@ -3,8 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, Percent, Plus, RefreshCw, Tag, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Promotion, PromotionType } from "@/lib/types";
+import { baht } from "@/lib/format";
+import { Product, Promotion, PromotionType } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
+
+type PromotionRow = Promotion & {
+  promotion_products: { product_id: string }[];
+};
 
 const TYPE_LABELS: Record<PromotionType, string> = {
   buy_x_get_cheapest_free: "ครบ N ชิ้น ลดเท่าเมนูถูกสุด (เหมือนแถม 1)",
@@ -12,7 +17,7 @@ const TYPE_LABELS: Record<PromotionType, string> = {
 
 function describePromotion(p: Promotion): string {
   if (p.type === "buy_x_get_cheapest_free") {
-    return `สั่งครบทุก ${p.threshold_qty ?? "-"} ชิ้น (รวมทั้งบิลของโต๊ะ) ลดราคาอัตโนมัติเท่ากับเมนูที่ถูกที่สุดในบิล — ครบกี่รอบคูณส่วนลดตามไปด้วย`;
+    return `สั่งเมนูที่เลือกไว้ครบทุก ${p.threshold_qty ?? "-"} ชิ้น (รวมทั้งบิลของโต๊ะ) ลดราคาอัตโนมัติเท่ากับเมนูที่ถูกที่สุดในกลุ่มนี้ — ครบกี่รอบคูณส่วนลดตามไปด้วย`;
   }
   return "";
 }
@@ -27,22 +32,34 @@ export default function PromotionsPage() {
 
 function PromotionsPageContent() {
   const supabase = useMemo(() => createClient(), []);
-  const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const [promotions, setPromotions] = useState<PromotionRow[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<PromotionRow | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+
+  const productName = useCallback(
+    (id: string) => products.find((p) => p.id === id)?.name ?? "?",
+    [products]
+  );
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const { data, error } = await supabase
-        .from("promotions")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      setPromotions((data as Promotion[]) ?? []);
+      const [promoRes, prodRes] = await Promise.all([
+        supabase
+          .from("promotions")
+          .select("*, promotion_products(product_id)")
+          .order("created_at", { ascending: false }),
+        supabase.from("products").select("*").eq("is_active", true).order("name"),
+      ]);
+      if (promoRes.error) throw promoRes.error;
+      if (prodRes.error) throw prodRes.error;
+      setPromotions((promoRes.data as PromotionRow[]) ?? []);
+      setProducts((prodRes.data as Product[]) ?? []);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ");
     } finally {
@@ -54,7 +71,17 @@ function PromotionsPageContent() {
     loadData();
   }, [loadData]);
 
-  async function toggleActive(p: Promotion, active: boolean) {
+  function openAdd() {
+    setEditing(null);
+    setModalOpen(true);
+  }
+
+  function openEdit(p: PromotionRow) {
+    setEditing(p);
+    setModalOpen(true);
+  }
+
+  async function toggleActive(p: PromotionRow, active: boolean) {
     setSavingId(p.id);
     setPromotions((prev) =>
       prev.map((item) => (item.id === p.id ? { ...item, is_active: active } : item))
@@ -70,7 +97,7 @@ function PromotionsPageContent() {
     }
   }
 
-  async function handleDelete(p: Promotion) {
+  async function handleDelete(p: PromotionRow) {
     if (!window.confirm(`ลบโปรโมชั่น "${p.name}" ?`)) return;
     const { error } = await supabase.from("promotions").delete().eq("id", p.id);
     if (error) {
@@ -84,10 +111,7 @@ function PromotionsPageContent() {
     <div className="min-w-0 flex-1 p-4 md:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold md:text-2xl">จัดการโปรโมชั่น</h1>
-        <button
-          className="btn-primary inline-flex items-center gap-2"
-          onClick={() => setModalOpen(true)}
-        >
+        <button className="btn-primary inline-flex items-center gap-2" onClick={openAdd}>
           <Plus className="h-4 w-4" strokeWidth={2.5} />
           เพิ่มโปรโมชั่น
         </button>
@@ -96,8 +120,9 @@ function PromotionsPageContent() {
       <div className="card mb-4 flex items-start gap-3 p-4 text-sm text-neutral-600">
         <Tag className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" strokeWidth={2} />
         <p>
-          โปรโมชั่นที่เปิดใช้งานจะคำนวณส่วนลดให้อัตโนมัติทุกครั้งที่มีการสั่ง/แก้ไขออเดอร์ในโหมด &ldquo;เปิดโต๊ะ&rdquo;
-          (ทั้งพนักงานคีย์เองและลูกค้าสั่งผ่าน QR) — ลูกค้าจะเห็นส่วนลดที่ได้ในหน้าสั่งอาหารของตัวเองด้วย
+          เลือกเมนูที่เข้าร่วมโปรโมชั่นเองได้ — ระบบจะนับจำนวน/หาราคาถูกสุดเฉพาะเมนูที่เลือกไว้เท่านั้น
+          (ไม่นับสินค้าอื่นในบิล) คำนวณส่วนลดอัตโนมัติทุกครั้งที่มีการสั่ง/แก้ไขออเดอร์ในโหมด &ldquo;เปิดโต๊ะ&rdquo;
+          ทั้งพนักงานคีย์เองและลูกค้าสั่งผ่าน QR — ลูกค้าจะเห็นส่วนลดที่ได้ในหน้าสั่งอาหารของตัวเองด้วย
         </p>
       </div>
 
@@ -107,10 +132,7 @@ function PromotionsPageContent() {
         <div className="py-16 text-center text-red-500">
           <AlertCircle className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
           <p className="mb-3 text-sm">โหลดข้อมูลไม่สำเร็จ: {loadError}</p>
-          <button
-            className="btn-secondary inline-flex items-center gap-2"
-            onClick={loadData}
-          >
+          <button className="btn-secondary inline-flex items-center gap-2" onClick={loadData}>
             <RefreshCw className="h-4 w-4" strokeWidth={2} />
             ลองอีกครั้ง
           </button>
@@ -136,8 +158,24 @@ function PromotionsPageContent() {
                   </p>
                   <p className="mt-0.5 text-xs text-neutral-400">{TYPE_LABELS[p.type]}</p>
                   <p className="mt-1.5 text-sm text-neutral-600">{describePromotion(p)}</p>
+                  <p className="mt-1.5 flex flex-wrap gap-1.5">
+                    {p.promotion_products.length === 0 ? (
+                      <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-500">
+                        ยังไม่ได้เลือกเมนู — จะไม่มีผลลด
+                      </span>
+                    ) : (
+                      p.promotion_products.map((pp) => (
+                        <span
+                          key={pp.product_id}
+                          className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700"
+                        >
+                          {productName(pp.product_id)}
+                        </span>
+                      ))
+                    )}
+                  </p>
                 </div>
-                <div className="flex shrink-0 items-center gap-3">
+                <div className="flex shrink-0 flex-col items-end gap-2">
                   <label className="flex items-center gap-2 text-sm text-neutral-600">
                     <input
                       type="checkbox"
@@ -148,12 +186,20 @@ function PromotionsPageContent() {
                     />
                     เปิดใช้งาน
                   </label>
-                  <button
-                    className="rounded-lg px-3 py-1.5 text-sm text-red-500 hover:bg-red-50"
-                    onClick={() => handleDelete(p)}
-                  >
-                    ลบ
-                  </button>
+                  <div className="flex gap-1">
+                    <button
+                      className="rounded-lg px-3 py-1.5 text-sm text-brand-600 hover:bg-brand-50"
+                      onClick={() => openEdit(p)}
+                    >
+                      แก้ไข
+                    </button>
+                    <button
+                      className="rounded-lg px-3 py-1.5 text-sm text-red-500 hover:bg-red-50"
+                      onClick={() => handleDelete(p)}
+                    >
+                      ลบ
+                    </button>
+                  </div>
                 </div>
               </div>
             </li>
@@ -163,6 +209,8 @@ function PromotionsPageContent() {
 
       {modalOpen && (
         <PromotionModal
+          promotion={editing}
+          products={products}
           onClose={() => setModalOpen(false)}
           onSaved={() => {
             setModalOpen(false);
@@ -175,18 +223,36 @@ function PromotionsPageContent() {
 }
 
 function PromotionModal({
+  promotion,
+  products,
   onClose,
   onSaved,
 }: {
+  promotion: PromotionRow | null;
+  products: Product[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
-  const [name, setName] = useState("");
-  const [type, setType] = useState<PromotionType>("buy_x_get_cheapest_free");
-  const [thresholdQty, setThresholdQty] = useState("10");
+  const [name, setName] = useState(promotion?.name ?? "");
+  const [type, setType] = useState<PromotionType>(promotion?.type ?? "buy_x_get_cheapest_free");
+  const [thresholdQty, setThresholdQty] = useState(
+    promotion?.threshold_qty ? String(promotion.threshold_qty) : "10"
+  );
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    () => new Set(promotion?.promotion_products.map((pp) => pp.product_id) ?? [])
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function toggleProduct(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -198,15 +264,57 @@ function PromotionModal({
       setSaving(false);
       return;
     }
-    const { error } = await supabase.from("promotions").insert({
-      name: name.trim(),
-      type,
-      threshold_qty: qty,
-      is_active: true,
-    });
+    if (selectedIds.size === 0) {
+      setError("เลือกอย่างน้อย 1 เมนูที่ให้เข้าร่วมโปรโมชั่นนี้");
+      setSaving(false);
+      return;
+    }
+
+    const payload = { name: name.trim(), type, threshold_qty: qty, is_active: true };
+    let promotionId = promotion?.id;
+
+    if (promotionId) {
+      const { error: updateErr } = await supabase
+        .from("promotions")
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq("id", promotionId);
+      if (updateErr) {
+        setError(`บันทึกไม่สำเร็จ: ${updateErr.message}`);
+        setSaving(false);
+        return;
+      }
+      const { error: delErr } = await supabase
+        .from("promotion_products")
+        .delete()
+        .eq("promotion_id", promotionId);
+      if (delErr) {
+        setError(`บันทึกรายการเมนูไม่สำเร็จ: ${delErr.message}`);
+        setSaving(false);
+        return;
+      }
+    } else {
+      const { data, error: insertErr } = await supabase
+        .from("promotions")
+        .insert(payload)
+        .select("id")
+        .single();
+      if (insertErr || !data) {
+        setError(`บันทึกไม่สำเร็จ: ${insertErr?.message}`);
+        setSaving(false);
+        return;
+      }
+      promotionId = data.id;
+    }
+
+    const { error: linkErr } = await supabase.from("promotion_products").insert(
+      Array.from(selectedIds).map((product_id) => ({
+        promotion_id: promotionId,
+        product_id,
+      }))
+    );
     setSaving(false);
-    if (error) {
-      setError(`บันทึกไม่สำเร็จ: ${error.message}`);
+    if (linkErr) {
+      setError(`บันทึกรายการเมนูไม่สำเร็จ: ${linkErr.message}`);
       return;
     }
     onSaved();
@@ -219,7 +327,7 @@ function PromotionModal({
         className="flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl"
       >
         <div className="flex items-center justify-between px-6 pt-5">
-          <h2 className="text-xl font-bold">เพิ่มโปรโมชั่น</h2>
+          <h2 className="text-xl font-bold">{promotion ? "แก้ไขโปรโมชั่น" : "เพิ่มโปรโมชั่น"}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -257,29 +365,57 @@ function PromotionModal({
           </Field>
 
           {type === "buy_x_get_cheapest_free" && (
-            <Field label="สั่งครบกี่ชิ้น (รวมทั้งบิลของโต๊ะ) ต่อ 1 รอบส่วนลด *">
-              <input
-                type="number"
-                inputMode="numeric"
-                min={1}
-                step={1}
-                className="input"
-                value={thresholdQty}
-                onChange={(e) => setThresholdQty(e.target.value)}
-                required
-              />
-            </Field>
+            <>
+              <Field label="สั่งครบกี่ชิ้น (เฉพาะเมนูที่เลือก) ต่อ 1 รอบส่วนลด *">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  step={1}
+                  className="input"
+                  value={thresholdQty}
+                  onChange={(e) => setThresholdQty(e.target.value)}
+                  required
+                />
+              </Field>
+
+              <Field label={`เลือกเมนูที่เข้าร่วม * (เลือกแล้ว ${selectedIds.size} รายการ)`}>
+                <div className="max-h-64 space-y-1 overflow-y-auto rounded-xl border border-neutral-200 p-2">
+                  {products.length === 0 ? (
+                    <p className="p-2 text-sm text-neutral-400">ยังไม่มีสินค้าในระบบ</p>
+                  ) : (
+                    products.map((product) => (
+                      <label
+                        key={product.id}
+                        className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-neutral-50"
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          <input
+                            type="checkbox"
+                            className="h-4.5 w-4.5 shrink-0 accent-brand-600"
+                            checked={selectedIds.has(product.id)}
+                            onChange={() => toggleProduct(product.id)}
+                          />
+                          <span className="truncate text-sm">{product.name}</span>
+                        </span>
+                        <span className="shrink-0 text-xs text-neutral-400">
+                          {baht(product.price)}
+                        </span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </Field>
+            </>
           )}
 
           <p className="rounded-xl bg-neutral-50 px-4 py-2.5 text-sm text-neutral-500">
-            ระบบจะลดราคาอัตโนมัติเท่ากับราคาเมนูที่ถูกที่สุดในบิลนั้น ทุกครั้งที่จำนวนชิ้นรวมครบตามที่ตั้งไว้
-            (ครบ 2 รอบ ลด 2 เท่า ฯลฯ)
+            ระบบจะนับจำนวน/หาราคาถูกสุดเฉพาะเมนูที่เลือกไว้ด้านบนเท่านั้น แล้วลดราคาอัตโนมัติเท่ากับเมนูที่ถูกที่สุด
+            ในกลุ่มนี้ ทุกครั้งที่จำนวนชิ้นรวมครบตามที่ตั้งไว้ (ครบ 2 รอบ ลด 2 เท่า ฯลฯ)
           </p>
 
           {error && (
-            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
-              {error}
-            </p>
+            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>
           )}
         </div>
 
@@ -305,9 +441,7 @@ function Field({
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-sm font-medium text-neutral-700">
-        {label}
-      </label>
+      <label className="mb-1.5 block text-sm font-medium text-neutral-700">{label}</label>
       {children}
     </div>
   );

@@ -1273,7 +1273,35 @@ create trigger trg_log_promotions
   after insert or update or delete on public.promotions
   for each row execute function public.log_activity();
 
+-- สินค้าที่นับ/ร่วมได้กับโปรโมชั่นนั้นๆ (เจ้าของร้านเลือกเอง ต่อโปรโมชั่น)
+create table if not exists public.promotion_products (
+  promotion_id uuid not null references public.promotions (id) on delete cascade,
+  product_id uuid not null references public.products (id) on delete cascade,
+  primary key (promotion_id, product_id)
+);
+
+alter table public.promotion_products enable row level security;
+
+drop policy if exists "authenticated read promotion_products" on public.promotion_products;
+create policy "authenticated read promotion_products" on public.promotion_products
+  for select to authenticated using (true);
+
+drop policy if exists "anon read active promotion_products" on public.promotion_products;
+create policy "anon read active promotion_products" on public.promotion_products
+  for select to anon using (
+    exists (select 1 from promotions p where p.id = promotion_id and p.is_active = true)
+  );
+
+drop policy if exists "owner insert promotion_products" on public.promotion_products;
+create policy "owner insert promotion_products" on public.promotion_products
+  for insert to authenticated with check (public.is_owner());
+
+drop policy if exists "owner delete promotion_products" on public.promotion_products;
+create policy "owner delete promotion_products" on public.promotion_products
+  for delete to authenticated using (public.is_owner());
+
 -- คำนวณส่วนลดโปรโมชั่นทั้งหมดที่ใช้ได้กับบิลนี้ ณ ตอนนี้ (เรียกใหม่ทุกครั้งที่รายการเปลี่ยน)
+-- นับจำนวน/หาราคาถูกสุดเฉพาะสินค้าที่เลือกไว้ให้โปรโมชั่นนั้นๆ เท่านั้น (ไม่ใช่ทั้งบิล)
 create or replace function public.calculate_promo_discount(p_sale_id uuid)
 returns numeric
 language plpgsql
@@ -1281,23 +1309,26 @@ security definer
 set search_path = public
 as $$
 declare
-  v_total_qty numeric;
-  v_cheapest_price numeric;
   v_discount numeric := 0;
   v_promo record;
+  v_qty numeric;
+  v_cheapest numeric;
 begin
-  select coalesce(sum(quantity), 0), min(price) into v_total_qty, v_cheapest_price
-    from sale_items where sale_id = p_sale_id;
-
-  if v_total_qty is null or v_total_qty = 0 then
-    return 0;
-  end if;
-
   for v_promo in
     select * from promotions
     where is_active = true and type = 'buy_x_get_cheapest_free' and coalesce(threshold_qty, 0) > 0
   loop
-    v_discount := v_discount + floor(v_total_qty / v_promo.threshold_qty) * v_cheapest_price;
+    select coalesce(sum(si.quantity), 0), min(si.price)
+      into v_qty, v_cheapest
+      from sale_items si
+      where si.sale_id = p_sale_id
+        and si.product_id in (
+          select pp.product_id from promotion_products pp where pp.promotion_id = v_promo.id
+        );
+
+    if v_qty > 0 and v_cheapest is not null then
+      v_discount := v_discount + floor(v_qty / v_promo.threshold_qty) * v_cheapest;
+    end if;
   end loop;
 
   return v_discount;
