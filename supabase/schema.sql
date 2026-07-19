@@ -505,6 +505,7 @@ declare
   v_round_total numeric := 0;
   v_round_count numeric := 0;
   v_table_name text;
+  v_promo_discount numeric;
 begin
   if auth.uid() is null then
     raise exception 'ต้องล็อกอินก่อน';
@@ -552,10 +553,15 @@ begin
 
     update sales set
       subtotal = subtotal + v_line_total,
-      total = greatest(subtotal + v_line_total - discount, 0),
       cost_total = cost_total + v_line_cost
       where id = v_sale_id;
   end loop;
+
+  v_promo_discount := public.calculate_promo_discount(v_sale_id);
+  update sales set
+    discount = v_promo_discount,
+    total = greatest(subtotal - v_promo_discount, 0)
+    where id = v_sale_id;
 
   perform public.log_action('order', 'sales', v_sale_id::text,
     format('สั่งอาหารเข้า%s: %s รายการ ยอด %s บาท', coalesce(v_table_name, 'โต๊ะ'), v_round_count, v_round_total));
@@ -631,6 +637,7 @@ declare
   v_new_line_cost numeric := 0;
   v_qty_delta numeric;
   v_desc text;
+  v_promo_discount numeric;
 begin
   if auth.uid() is null then
     raise exception 'ต้องล็อกอินก่อน';
@@ -669,8 +676,13 @@ begin
 
   update sales set
     subtotal = subtotal - v_old_line_total + v_new_line_total,
-    cost_total = cost_total - v_old_line_cost + v_new_line_cost,
-    total = greatest((subtotal - v_old_line_total + v_new_line_total) - discount, 0)
+    cost_total = cost_total - v_old_line_cost + v_new_line_cost
+    where id = v_item.sale_id;
+
+  v_promo_discount := public.calculate_promo_discount(v_item.sale_id);
+  update sales set
+    discount = v_promo_discount,
+    total = greatest(subtotal - v_promo_discount, 0)
     where id = v_item.sale_id;
 
   perform public.log_action('edit_item', 'sale_items', p_sale_item_id::text, v_desc);
@@ -933,6 +945,7 @@ declare
   v_line_cost numeric;
   v_round_total numeric := 0;
   v_round_count numeric := 0;
+  v_promo_discount numeric;
 begin
   select is_active, name into v_table_active, v_table_name
     from dining_tables where id = p_table_id;
@@ -983,10 +996,15 @@ begin
 
     update sales set
       subtotal = subtotal + v_line_total,
-      total = greatest(subtotal + v_line_total - discount, 0),
       cost_total = cost_total + v_line_cost
       where id = v_sale_id;
   end loop;
+
+  v_promo_discount := public.calculate_promo_discount(v_sale_id);
+  update sales set
+    discount = v_promo_discount,
+    total = greatest(subtotal - v_promo_discount, 0)
+    where id = v_sale_id;
 
   perform public.log_action('order', 'sales', v_sale_id::text,
     format('ลูกค้าสั่งอาหารเข้า%s เอง: %s รายการ ยอด %s บาท', coalesce(v_table_name, 'โต๊ะ'), v_round_count, v_round_total));
@@ -1009,7 +1027,7 @@ declare
 begin
   select * into v_sale from sales where table_id = p_table_id and status = 'open' limit 1;
   if not found then
-    return jsonb_build_object('sale_id', null, 'subtotal', 0, 'items', '[]'::jsonb, 'bill_requested', false);
+    return jsonb_build_object('sale_id', null, 'subtotal', 0, 'discount', 0, 'total', 0, 'items', '[]'::jsonb, 'bill_requested', false);
   end if;
 
   select coalesce(jsonb_agg(jsonb_build_object(
@@ -1023,6 +1041,8 @@ begin
   return jsonb_build_object(
     'sale_id', v_sale.id,
     'subtotal', v_sale.subtotal,
+    'discount', v_sale.discount,
+    'total', v_sale.total,
     'items', v_items,
     'bill_requested', v_sale.bill_requested_at is not null
   );
@@ -1210,3 +1230,79 @@ drop policy if exists "authenticated delete product images" on storage.objects;
 create policy "authenticated delete product images" on storage.objects
   for delete to authenticated
   using (bucket_id = 'product-images');
+
+-- ============================================================
+-- ระบบโปรโมชั่น (owner จัดการ) เริ่มด้วยแบบ "ครบ N ชิ้น ลดเท่าราคาเมนูถูกสุด"
+-- ออกแบบให้ขยาย type อื่นเพิ่มได้ในอนาคต
+-- ============================================================
+create table if not exists public.promotions (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  type text not null default 'buy_x_get_cheapest_free'
+    check (type in ('buy_x_get_cheapest_free')),
+  threshold_qty integer,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.promotions enable row level security;
+
+drop policy if exists "authenticated read promotions" on public.promotions;
+create policy "authenticated read promotions" on public.promotions
+  for select to authenticated using (true);
+
+drop policy if exists "anon read active promotions" on public.promotions;
+create policy "anon read active promotions" on public.promotions
+  for select to anon using (is_active = true);
+
+drop policy if exists "owner insert promotions" on public.promotions;
+create policy "owner insert promotions" on public.promotions
+  for insert to authenticated with check (public.is_owner());
+
+drop policy if exists "owner update promotions" on public.promotions;
+create policy "owner update promotions" on public.promotions
+  for update to authenticated using (public.is_owner()) with check (public.is_owner());
+
+drop policy if exists "owner delete promotions" on public.promotions;
+create policy "owner delete promotions" on public.promotions
+  for delete to authenticated using (public.is_owner());
+
+drop trigger if exists trg_log_promotions on public.promotions;
+create trigger trg_log_promotions
+  after insert or update or delete on public.promotions
+  for each row execute function public.log_activity();
+
+-- คำนวณส่วนลดโปรโมชั่นทั้งหมดที่ใช้ได้กับบิลนี้ ณ ตอนนี้ (เรียกใหม่ทุกครั้งที่รายการเปลี่ยน)
+create or replace function public.calculate_promo_discount(p_sale_id uuid)
+returns numeric
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_total_qty numeric;
+  v_cheapest_price numeric;
+  v_discount numeric := 0;
+  v_promo record;
+begin
+  select coalesce(sum(quantity), 0), min(price) into v_total_qty, v_cheapest_price
+    from sale_items where sale_id = p_sale_id;
+
+  if v_total_qty is null or v_total_qty = 0 then
+    return 0;
+  end if;
+
+  for v_promo in
+    select * from promotions
+    where is_active = true and type = 'buy_x_get_cheapest_free' and coalesce(threshold_qty, 0) > 0
+  loop
+    v_discount := v_discount + floor(v_total_qty / v_promo.threshold_qty) * v_cheapest_price;
+  end loop;
+
+  return v_discount;
+end;
+$$;
+
+revoke execute on function public.calculate_promo_discount from public, anon;
+grant execute on function public.calculate_promo_discount to authenticated;

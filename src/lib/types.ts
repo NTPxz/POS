@@ -181,6 +181,20 @@ export type TableOrderItem = {
 export type TableOrder = {
   sale_id: string | null;
   subtotal: number;
+  discount: number;
+  total: number;
   items: TableOrderItem[];
   bill_requested: boolean;
+};
+
+export type PromotionType = "buy_x_get_cheapest_free";
+
+export type Promotion = {
+  id: string;
+  name: string;
+  type: PromotionType;
+  threshold_qty: number | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 };

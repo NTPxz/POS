@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LogOut,
   Package,
+  Percent,
   Receipt,
   ShoppingCart,
   TrendingUp,
@@ -35,6 +36,7 @@ const NAV_ITEMS: {
   { href: "/income", label: "รายได้", icon: TrendingUp, minRole: "owner" },
   { href: "/expenses", label: "รายจ่าย", icon: Wallet, minRole: "owner" },
   { href: "/staff", label: "พนักงาน", icon: Users, minRole: "owner" },
+  { href: "/promotions", label: "โปรโมชั่น", icon: Percent, minRole: "owner" },
   { href: "/log", label: "Log", icon: History, minRole: "owner" },
 ];
 

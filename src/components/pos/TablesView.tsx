@@ -393,7 +393,20 @@ function TableOrderSession({
           <div className="min-w-0 flex-1">
             <p className="font-bold">{table.name}</p>
             <p className="text-xs text-neutral-500">
-              {sale ? `ยอดสั่งแล้ว ${baht(existingTotal)}` : "ยังไม่มีออเดอร์"}
+              {sale ? (
+                sale.discount > 0 ? (
+                  <>
+                    ยอดสั่งแล้ว {baht(existingTotal)}{" "}
+                    <span className="font-semibold text-green-600">
+                      -{baht(Number(sale.discount))} โปร
+                    </span>
+                  </>
+                ) : (
+                  `ยอดสั่งแล้ว ${baht(existingTotal)}`
+                )
+              ) : (
+                "ยังไม่มีออเดอร์"
+              )}
             </p>
           </div>
           {sale &&
@@ -718,10 +731,16 @@ function OrderPanel({
             {submitting ? "กำลังส่ง..." : `ส่งออเดอร์ (+${baht(roundTotal)})`}
           </button>
         )}
+        {sale && sale.discount > 0 && (
+          <div className="flex items-center justify-between px-1 text-sm text-green-600">
+            <span>ส่วนลดโปรโมชั่น</span>
+            <span className="font-semibold">-{baht(Number(sale.discount))}</span>
+          </div>
+        )}
         <div className="flex items-center justify-between px-1">
           <span className="text-neutral-500">ยอดรวม{table.name}</span>
           <span className="text-2xl font-bold">
-            {baht(existingTotal + roundTotal)}
+            {baht(Math.max(existingTotal + roundTotal - (sale ? Number(sale.discount) : 0), 0))}
           </span>
         </div>
         <button
@@ -769,7 +788,9 @@ function TableCheckoutModal({
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [method, setMethod] = useState<PaymentMethod>("cash");
-  const [discountStr, setDiscountStr] = useState("");
+  const [discountStr, setDiscountStr] = useState(() =>
+    Number(sale.discount) > 0 ? String(Number(sale.discount)) : ""
+  );
   const [receivedStr, setReceivedStr] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -863,7 +884,12 @@ function TableCheckoutModal({
               <span>{baht(subtotal)}</span>
             </div>
             <div className="mt-2 flex items-center justify-between gap-3">
-              <label className="text-sm text-neutral-500">ส่วนลด (บาท)</label>
+              <label className="text-sm text-neutral-500">
+                ส่วนลด (บาท){" "}
+                {Number(sale.discount) > 0 && (
+                  <span className="text-xs text-green-600">(รวมโปรโมชั่นแล้ว แก้ได้)</span>
+                )}
+              </label>
               <input
                 type="number"
                 inputMode="decimal"

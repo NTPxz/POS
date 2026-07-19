@@ -6,6 +6,7 @@ import {
   AlertCircle,
   Bell,
   CheckCircle2,
+  Percent,
   RefreshCw,
   ShoppingCart,
   X,
@@ -16,6 +17,7 @@ import {
   Category,
   DiningTable,
   Product,
+  Promotion,
   SALE_ITEM_STATUS_LABELS,
   TableOrder,
 } from "@/lib/types";
@@ -36,6 +38,7 @@ export default function CustomerOrderPage({
   const [table, setTable] = useState<DiningTable | null | undefined>(undefined);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [order, setOrder] = useState<TableOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -59,7 +62,7 @@ export default function CustomerOrderPage({
     setLoading(true);
     setLoadError(null);
     try {
-      const [tableRes, menuRes, catRes] = await Promise.all([
+      const [tableRes, menuRes, catRes, promoRes] = await Promise.all([
         supabase
           .from("dining_tables")
           .select("*")
@@ -67,6 +70,7 @@ export default function CustomerOrderPage({
           .maybeSingle(),
         supabase.from("public_menu").select("*").order("name"),
         supabase.from("categories").select("*").order("position"),
+        supabase.from("promotions").select("*").eq("is_active", true),
       ]);
       if (tableRes.error) throw tableRes.error;
       if (menuRes.error) throw menuRes.error;
@@ -74,6 +78,7 @@ export default function CustomerOrderPage({
       setTable((tableRes.data as DiningTable) ?? null);
       setProducts((menuRes.data as Product[]) ?? []);
       setCategories((catRes.data as Category[]) ?? []);
+      setPromotions((promoRes.data as Promotion[]) ?? []);
       await loadOrder();
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ");
@@ -207,6 +212,27 @@ export default function CustomerOrderPage({
         </div>
       </header>
 
+      {promotions.length > 0 && (
+        <div className="mx-4 mt-3 space-y-2">
+          {promotions.map((p) => (
+            <div
+              key={p.id}
+              className="flex items-start gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 px-4 py-3 text-white shadow"
+            >
+              <Percent className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">{p.name}</p>
+                {p.type === "buy_x_get_cheapest_free" && (
+                  <p className="mt-0.5 text-xs text-brand-50">
+                    สั่งครบทุก {p.threshold_qty} ชิ้น รับส่วนลดฟรี 1 ชิ้น (เมนูที่ถูกที่สุดในบิล) อัตโนมัติ
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {submittedMsg && (
         <div className="mx-4 mt-3 flex items-center gap-2 rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">
           <CheckCircle2 className="h-4 w-4 shrink-0" strokeWidth={2} />
@@ -235,7 +261,9 @@ export default function CustomerOrderPage({
             <ShoppingCart className="h-5 w-5" strokeWidth={2} />
             {roundCount > 0 ? `+${formatNumber(roundCount)} รายการใหม่` : "ดูออเดอร์ของฉัน"}
           </span>
-          <span className="text-lg font-bold">{baht(existingTotal + roundTotal)}</span>
+          <span className="text-lg font-bold">
+            {baht(Math.max(existingTotal + roundTotal - (order ? Number(order.discount) : 0), 0))}
+          </span>
         </button>
       )}
 
@@ -349,9 +377,19 @@ export default function CustomerOrderPage({
                   {submitting ? "กำลังส่ง..." : `สั่งอาหาร (+${baht(roundTotal)})`}
                 </button>
               )}
+              {order && Number(order.discount) > 0 && (
+                <div className="flex items-center justify-between px-1 text-sm text-green-600">
+                  <span>🎉 ส่วนลดโปรโมชั่นที่ได้รับ</span>
+                  <span className="font-semibold">-{baht(Number(order.discount))}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between px-1">
                 <span className="text-neutral-500">ยอดรวมทั้งหมด</span>
-                <span className="text-2xl font-bold">{baht(existingTotal + roundTotal)}</span>
+                <span className="text-2xl font-bold">
+                  {baht(
+                    Math.max(existingTotal + roundTotal - (order ? Number(order.discount) : 0), 0)
+                  )}
+                </span>
               </div>
               <button
                 className="btn-secondary inline-flex w-full items-center justify-center gap-2 py-3"
