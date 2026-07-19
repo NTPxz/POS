@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 type TableAlertContextValue = {
   /** มีแจ้งเตือนค้างอยู่ (ลูกค้าสั่งของ/เรียกเก็บเงิน) ที่ยังไม่ได้ดู */
   alert: boolean;
-  triggerAlert: () => void;
+  /** โต๊ะล่าสุดที่ทำให้เกิดแจ้งเตือน — ใช้ตอนกดจุดแดงบน nav เฉยๆ (ไม่ได้กดผ่าน toast ที่รู้โต๊ะอยู่แล้ว) */
+  alertTableId: string | null;
+  triggerAlert: (tableId?: string) => void;
   /** ล้างป้ายแจ้งเตือนเฉยๆ โดยไม่เปลี่ยนหน้า (เช่นเมื่อพนักงานเข้าดูหน้าเปิดโต๊ะเองอยู่แล้ว) */
   clearAlert: () => void;
   /** ให้หน้า "/" สลับไปโหมด "เปิดโต๊ะ" ให้อัตโนมัติรอบเดียวตอนโหลด */
@@ -22,6 +24,7 @@ type TableAlertContextValue = {
 
 const TableAlertContext = createContext<TableAlertContextValue>({
   alert: false,
+  alertTableId: null,
   triggerAlert: () => {},
   clearAlert: () => {},
   focusTables: false,
@@ -40,16 +43,24 @@ export default function TableAlertProvider({
 }) {
   const router = useRouter();
   const [alert, setAlert] = useState(false);
+  const [alertTableId, setAlertTableId] = useState<string | null>(null);
   const [focusTables, setFocusTables] = useState(false);
   const [focusTableId, setFocusTableId] = useState<string | null>(null);
 
-  const triggerAlert = useCallback(() => setAlert(true), []);
-  const clearAlert = useCallback(() => setAlert(false), []);
+  const triggerAlert = useCallback((tableId?: string) => {
+    setAlert(true);
+    if (tableId) setAlertTableId(tableId);
+  }, []);
+  const clearAlert = useCallback(() => {
+    setAlert(false);
+    setAlertTableId(null);
+  }, []);
   const consumeFocusTables = useCallback(() => setFocusTables(false), []);
   const consumeFocusTableId = useCallback(() => setFocusTableId(null), []);
   const goToTables = useCallback(
     (tableId?: string) => {
       setAlert(false);
+      setAlertTableId(null);
       setFocusTables(true);
       setFocusTableId(tableId ?? null);
       router.push("/");
@@ -61,6 +72,7 @@ export default function TableAlertProvider({
     <TableAlertContext.Provider
       value={{
         alert,
+        alertTableId,
         triggerAlert,
         clearAlert,
         focusTables,

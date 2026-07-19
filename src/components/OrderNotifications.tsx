@@ -112,7 +112,7 @@ export default function OrderNotifications() {
   const pushToast = useCallback(
     (toast: Toast) => {
       setToasts((prev) => [...prev, toast]);
-      triggerAlert();
+      triggerAlert(toast.tableId);
       window.setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== toast.id));
       }, TOAST_MS);

@@ -44,7 +44,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { profile } = useProfile();
   const role = profile?.role ?? "staff";
   const visibleItems = NAV_ITEMS.filter((item) => hasRole(role, item.minRole));
-  const { alert, goToTables } = useTableAlert();
+  const { alert, alertTableId, goToTables } = useTableAlert();
 
   useWakeLock(!!profile);
 
@@ -91,7 +91,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 onClick={(e) => {
                   if (showAlert) {
                     e.preventDefault();
-                    goToTables();
+                    goToTables(alertTableId ?? undefined);
                   }
                 }}
                 className={`flex items-center gap-3 rounded-xl px-4 py-3 font-medium transition ${
@@ -145,7 +145,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 onClick={(e) => {
                   if (showAlert) {
                     e.preventDefault();
-                    goToTables();
+                    goToTables(alertTableId ?? undefined);
                   }
                 }}
                 className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium ${
