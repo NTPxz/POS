@@ -1,20 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bell, Receipt, X } from "lucide-react";
+import { AlertTriangle, Bell, Receipt, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/components/ProfileProvider";
 import { useTableAlert } from "@/components/TableAlertProvider";
 
 type Toast = {
   id: string;
-  tone: "order" | "bill";
+  tone: "order" | "bill" | "reminder";
   title: string;
   message: string;
 };
 
 const TOAST_MS = 11000;
 const BATCH_MS = 900;
+// ถ้าออเดอร์ค้างสถานะ "รอรับ" นานกว่านี้ ถือว่าเลยกำหนด ต้องเตือนซ้ำ
+const STALE_PENDING_MS = 3 * 60 * 1000;
+// เช็คซ้ำทุกกี่มิลลิวินาที (ตราบใดที่ยังมีรายการค้างเกินกำหนดอยู่ จะเตือนซ้ำทุกรอบนี้)
+const STALE_CHECK_INTERVAL_MS = 2 * 60 * 1000;
 
 // ทำนองแจ้งเตือน — เพลงสั้นๆ วนซ้ำจนยาวรวม ~10 วิ ให้ได้ยินชัดในร้านที่มีเสียงดัง
 const ORDER_NOTES = [
@@ -69,7 +73,7 @@ export default function OrderNotifications() {
     };
   }, []);
 
-  const playChime = useCallback((tone: "order" | "bill") => {
+  const playChime = useCallback((tone: "order" | "bill" | "reminder") => {
     try {
       const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!Ctx) return;
@@ -77,7 +81,7 @@ export default function OrderNotifications() {
       audioCtxRef.current = ctx;
       if (ctx.state === "suspended") ctx.resume().catch(() => {});
 
-      const notes = tone === "bill" ? BILL_NOTES : ORDER_NOTES;
+      const notes = tone === "order" ? ORDER_NOTES : BILL_NOTES;
       const cycleDur = notes.reduce((sum, n) => sum + n.dur, 0) + 0.02 * notes.length;
 
       const now = ctx.currentTime;
@@ -128,6 +132,48 @@ export default function OrderNotifications() {
     },
     [supabase]
   );
+
+  const checkStalePending = useCallback(async () => {
+    const cutoff = new Date(Date.now() - STALE_PENDING_MS).toISOString();
+    const { data } = await supabase
+      .from("sale_items")
+      .select("id, sales!inner(status, dining_tables(name))")
+      .eq("status", "pending")
+      .eq("sales.status", "open")
+      .lt("created_at", cutoff);
+
+    const rows =
+      (data as unknown as {
+        id: string;
+        sales: { dining_tables: { name?: string } | { name?: string }[] | null } | null;
+      }[]) ?? [];
+    if (rows.length === 0) return;
+
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      const joined = row.sales?.dining_tables;
+      const name = (Array.isArray(joined) ? joined[0]?.name : joined?.name) ?? "โต๊ะ";
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    const summary = Array.from(counts.entries())
+      .map(([name, count]) => `${name} (${count} รายการ)`)
+      .join(", ");
+
+    pushToast({
+      id: `reminder-${Date.now()}`,
+      tone: "reminder",
+      title: "ออเดอร์ค้างรับนานเกิน 3 นาที",
+      message: summary,
+    });
+    playChime("reminder");
+  }, [supabase, pushToast, playChime]);
+
+  useEffect(() => {
+    if (!profile) return;
+    checkStalePending();
+    const interval = setInterval(checkStalePending, STALE_CHECK_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [profile, checkStalePending]);
 
   const flushOrder = useCallback(
     async (saleId: string) => {
@@ -205,17 +251,25 @@ export default function OrderNotifications() {
         <div
           key={t.id}
           className={`pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-2xl border p-4 shadow-lg backdrop-blur animate-toast-in ${
-            t.tone === "bill"
-              ? "border-amber-300 bg-amber-50/95"
-              : "border-brand-300 bg-white/95"
+            t.tone === "reminder"
+              ? "border-red-300 bg-red-50/95"
+              : t.tone === "bill"
+                ? "border-amber-300 bg-amber-50/95"
+                : "border-brand-300 bg-white/95"
           }`}
         >
           <div
             className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-              t.tone === "bill" ? "bg-amber-500 text-white" : "bg-brand-600 text-white"
+              t.tone === "reminder"
+                ? "bg-red-600 text-white"
+                : t.tone === "bill"
+                  ? "bg-amber-500 text-white"
+                  : "bg-brand-600 text-white"
             }`}
           >
-            {t.tone === "bill" ? (
+            {t.tone === "reminder" ? (
+              <AlertTriangle className="h-4 w-4" strokeWidth={2} />
+            ) : t.tone === "bill" ? (
               <Receipt className="h-4 w-4" strokeWidth={2} />
             ) : (
               <Bell className="h-4 w-4" strokeWidth={2} />
@@ -225,7 +279,15 @@ export default function OrderNotifications() {
             className="min-w-0 flex-1 text-left"
             onClick={() => goToTables()}
           >
-            <p className={`font-semibold ${t.tone === "bill" ? "text-amber-800" : "text-neutral-800"}`}>
+            <p
+              className={`font-semibold ${
+                t.tone === "reminder"
+                  ? "text-red-800"
+                  : t.tone === "bill"
+                    ? "text-amber-800"
+                    : "text-neutral-800"
+              }`}
+            >
               {t.title}
             </p>
             <p className="mt-0.5 break-words text-sm text-neutral-600">{t.message}</p>
