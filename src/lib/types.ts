@@ -199,3 +199,21 @@ export type Promotion = {
   created_at: string;
   updated_at: string;
 };
+
+export type CashShiftStatus = "open" | "closed";
+
+export type CashShift = {
+  id: string;
+  opening_amount: number;
+  opening_note: string | null;
+  opened_by: string | null;
+  opened_at: string;
+  closing_amount: number | null;
+  closing_note: string | null;
+  closed_by: string | null;
+  closed_at: string | null;
+  expected_amount: number | null;
+  difference: number | null;
+  status: CashShiftStatus;
+  created_at: string;
+};

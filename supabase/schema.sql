@@ -1340,3 +1340,127 @@ $$;
 
 revoke execute on function public.calculate_promo_discount from public, anon;
 grant execute on function public.calculate_promo_discount to authenticated;
+
+-- ============================================================
+-- ระบบจดเงินสดหน้าร้าน (เงินทอนตั้งต้น) — เปิดกะ/ปิดกะพร้อมนับเงินจริงเทียบยอดคาดการณ์
+-- ============================================================
+create table if not exists public.cash_shifts (
+  id uuid primary key default gen_random_uuid(),
+  opening_amount numeric(12, 2) not null default 0,
+  opening_note text,
+  opened_by uuid references auth.users (id),
+  opened_at timestamptz not null default now(),
+  closing_amount numeric(12, 2),
+  closing_note text,
+  closed_by uuid references auth.users (id),
+  closed_at timestamptz,
+  expected_amount numeric(12, 2),
+  difference numeric(12, 2),
+  status text not null default 'open' check (status in ('open', 'closed')),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_cash_shifts_status on public.cash_shifts (status);
+create index if not exists idx_cash_shifts_opened_at on public.cash_shifts (opened_at desc);
+
+-- บังคับให้มีกะที่ "open" ได้แค่ 1 กะพร้อมกันเท่านั้น
+create unique index if not exists idx_cash_shifts_one_open on public.cash_shifts (status) where status = 'open';
+
+alter table public.cash_shifts enable row level security;
+
+drop policy if exists "authenticated full access" on public.cash_shifts;
+create policy "authenticated full access" on public.cash_shifts
+  for all to authenticated using (true) with check (true);
+
+drop trigger if exists trg_log_cash_shifts on public.cash_shifts;
+create trigger trg_log_cash_shifts
+  after insert or update or delete on public.cash_shifts
+  for each row execute function public.log_activity();
+
+create or replace function public.open_cash_shift(
+  p_opening_amount numeric,
+  p_note text default null
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+  if exists (select 1 from cash_shifts where status = 'open') then
+    raise exception 'มีกะที่เปิดอยู่แล้ว ต้องปิดกะเดิมก่อน';
+  end if;
+
+  insert into cash_shifts (opening_amount, opening_note, opened_by)
+  values (coalesce(p_opening_amount, 0), p_note, auth.uid())
+  returning id into v_id;
+
+  perform public.log_action('cash_shift_open', 'cash_shifts', v_id::text,
+    format('เปิดกะเงินสด ตั้งต้น %s บาท', coalesce(p_opening_amount, 0)));
+
+  return v_id;
+end;
+$$;
+
+create or replace function public.close_cash_shift(
+  p_shift_id uuid,
+  p_closing_amount numeric,
+  p_note text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_shift cash_shifts%rowtype;
+  v_cash_sales numeric;
+  v_cash_expenses numeric;
+  v_expected numeric;
+  v_diff numeric;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select * into v_shift from cash_shifts where id = p_shift_id and status = 'open' for update;
+  if not found then
+    raise exception 'ไม่พบกะที่เปิดอยู่ (อาจถูกปิดไปแล้ว)';
+  end if;
+
+  select coalesce(sum(total), 0) into v_cash_sales
+    from sales
+    where payment_method = 'cash' and status = 'completed'
+      and created_at >= v_shift.opened_at;
+
+  -- หมายเหตุ: ตาราง expenses ไม่มีคอลัมน์วิธีชำระ ถือว่าทุกรายจ่ายจ่ายเป็นเงินสดทั้งหมด
+  select coalesce(sum(amount), 0) into v_cash_expenses
+    from expenses
+    where created_at >= v_shift.opened_at;
+
+  v_expected := v_shift.opening_amount + v_cash_sales - v_cash_expenses;
+  v_diff := coalesce(p_closing_amount, 0) - v_expected;
+
+  update cash_shifts set
+    closing_amount = p_closing_amount,
+    closing_note = p_note,
+    closed_by = auth.uid(),
+    closed_at = now(),
+    expected_amount = v_expected,
+    difference = v_diff,
+    status = 'closed'
+    where id = p_shift_id;
+
+  perform public.log_action('cash_shift_close', 'cash_shifts', p_shift_id::text,
+    format('ปิดกะเงินสด นับได้ %s บาท (คาดว่าควรมี %s บาท ส่วนต่าง %s บาท)',
+      p_closing_amount, v_expected, v_diff));
+end;
+$$;
+
+revoke execute on function public.open_cash_shift from public, anon;
+revoke execute on function public.close_cash_shift from public, anon;
+grant execute on function public.open_cash_shift to authenticated;
+grant execute on function public.close_cash_shift to authenticated;

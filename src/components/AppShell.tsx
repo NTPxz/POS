@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Banknote,
   History,
   LayoutDashboard,
   LogOut,
@@ -32,6 +33,7 @@ const NAV_ITEMS: {
   { href: "/", label: "ขายสินค้า", icon: ShoppingCart, minRole: "staff" },
   { href: "/sales", label: "ประวัติขาย", icon: Receipt, minRole: "staff" },
   { href: "/products", label: "สินค้า", icon: Package, minRole: "staff" },
+  { href: "/cash", label: "เงินสด", icon: Banknote, minRole: "staff" },
   { href: "/dashboard", label: "ภาพรวม", icon: LayoutDashboard, minRole: "owner" },
   { href: "/income", label: "รายได้", icon: TrendingUp, minRole: "owner" },
   { href: "/expenses", label: "รายจ่าย", icon: Wallet, minRole: "owner" },
