@@ -4,7 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, Plus, RefreshCw, Tag, Wallet, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { baht, formatDate, formatNumber, toDateInput } from "@/lib/format";
-import { Expense, ExpenseCategory, ExpenseWithCategory } from "@/lib/types";
+import {
+  Expense,
+  ExpenseCategory,
+  ExpenseWithCategory,
+  PAYMENT_LABELS,
+  PaymentMethod,
+} from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
 
 function startOfMonthInput(): string {
@@ -258,6 +264,9 @@ function ExpensesPageContent() {
                     </td>
                     <td className="px-4 py-3 text-neutral-500">
                       {e.expense_categories?.name ?? "ไม่ระบุหมวดหมู่"}
+                      <span className="ml-1.5 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-500">
+                        {PAYMENT_LABELS[e.payment_method]}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-right font-semibold text-red-600">
                       {baht(Number(e.amount))}
@@ -291,7 +300,8 @@ function ExpensesPageContent() {
                     <p className="font-semibold">{e.title}</p>
                     <p className="text-xs text-neutral-400">
                       {formatDate(e.expense_date)} ·{" "}
-                      {e.expense_categories?.name ?? "ไม่ระบุหมวดหมู่"}
+                      {e.expense_categories?.name ?? "ไม่ระบุหมวดหมู่"} ·{" "}
+                      {PAYMENT_LABELS[e.payment_method]}
                     </p>
                     {e.note && (
                       <p className="mt-1 text-xs text-neutral-400">{e.note}</p>
@@ -350,6 +360,7 @@ type ExpenseForm = {
   amount: string;
   expense_date: string;
   note: string;
+  payment_method: PaymentMethod;
 };
 
 function ExpenseModal({
@@ -372,6 +383,7 @@ function ExpenseModal({
           amount: String(expense.amount),
           expense_date: expense.expense_date,
           note: expense.note ?? "",
+          payment_method: expense.payment_method,
         }
       : {
           title: "",
@@ -379,6 +391,7 @@ function ExpenseModal({
           amount: "",
           expense_date: toDateInput(new Date()),
           note: "",
+          payment_method: "cash",
         }
   );
   const [saving, setSaving] = useState(false);
@@ -397,6 +410,7 @@ function ExpenseModal({
       amount: parseFloat(form.amount) || 0,
       expense_date: form.expense_date,
       note: form.note.trim() || null,
+      payment_method: form.payment_method,
     };
     const { error } = expense
       ? await supabase.from("expenses").update(payload).eq("id", expense.id)
@@ -465,20 +479,35 @@ function ExpenseModal({
             </Field>
           </div>
 
-          <Field label="หมวดหมู่">
-            <select
-              className="input"
-              value={form.category_id}
-              onChange={(e) => set({ category_id: e.target.value })}
-            >
-              <option value="">— ไม่ระบุ —</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="หมวดหมู่">
+              <select
+                className="input"
+                value={form.category_id}
+                onChange={(e) => set({ category_id: e.target.value })}
+              >
+                <option value="">— ไม่ระบุ —</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="จ่ายด้วย">
+              <select
+                className="input"
+                value={form.payment_method}
+                onChange={(e) => set({ payment_method: e.target.value as PaymentMethod })}
+              >
+                {(Object.keys(PAYMENT_LABELS) as PaymentMethod[]).map((m) => (
+                  <option key={m} value={m}>
+                    {PAYMENT_LABELS[m]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
 
           <Field label="หมายเหตุ">
             <input

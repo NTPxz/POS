@@ -1419,6 +1419,7 @@ declare
   v_shift cash_shifts%rowtype;
   v_cash_sales numeric;
   v_cash_expenses numeric;
+  v_adjustments numeric;
   v_expected numeric;
   v_diff numeric;
 begin
@@ -1436,12 +1437,16 @@ begin
     where payment_method = 'cash' and status = 'completed'
       and created_at >= v_shift.opened_at;
 
-  -- หมายเหตุ: ตาราง expenses ไม่มีคอลัมน์วิธีชำระ ถือว่าทุกรายจ่ายจ่ายเป็นเงินสดทั้งหมด
   select coalesce(sum(amount), 0) into v_cash_expenses
     from expenses
-    where created_at >= v_shift.opened_at;
+    where payment_method = 'cash'
+      and created_at >= v_shift.opened_at;
 
-  v_expected := v_shift.opening_amount + v_cash_sales - v_cash_expenses;
+  select coalesce(sum(amount), 0) into v_adjustments
+    from account_adjustments
+    where account = 'cash' and cash_shift_id = p_shift_id;
+
+  v_expected := v_shift.opening_amount + v_cash_sales - v_cash_expenses + v_adjustments;
   v_diff := coalesce(p_closing_amount, 0) - v_expected;
 
   update cash_shifts set
@@ -1464,3 +1469,99 @@ revoke execute on function public.open_cash_shift from public, anon;
 revoke execute on function public.close_cash_shift from public, anon;
 grant execute on function public.open_cash_shift to authenticated;
 grant execute on function public.close_cash_shift to authenticated;
+
+-- แยกวิธีจ่ายของรายจ่าย (เดิมถือว่าเป็นเงินสดทั้งหมด)
+alter table public.expenses add column if not exists payment_method text not null default 'cash';
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'expenses_payment_method_check') then
+    alter table public.expenses
+      add constraint expenses_payment_method_check check (payment_method in ('cash', 'transfer', 'card'));
+  end if;
+end $$;
+
+-- ============================================================
+-- ปรับยอดบัญชีด้วยมือ (เงินสดระหว่างกะ / เงินโอนที่ไม่ผูกกะ) พร้อมเหตุผล
+-- ============================================================
+create table if not exists public.account_adjustments (
+  id uuid primary key default gen_random_uuid(),
+  account text not null check (account in ('cash', 'transfer')),
+  cash_shift_id uuid references public.cash_shifts (id) on delete set null,
+  amount numeric(12, 2) not null,
+  reason text not null,
+  created_by uuid references auth.users (id),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_account_adjustments_account on public.account_adjustments (account);
+create index if not exists idx_account_adjustments_shift on public.account_adjustments (cash_shift_id);
+
+alter table public.account_adjustments enable row level security;
+
+drop policy if exists "authenticated full access" on public.account_adjustments;
+create policy "authenticated full access" on public.account_adjustments
+  for all to authenticated using (true) with check (true);
+
+drop trigger if exists trg_log_account_adjustments on public.account_adjustments;
+create trigger trg_log_account_adjustments
+  after insert or update or delete on public.account_adjustments
+  for each row execute function public.log_activity();
+
+-- ปรับยอดเงินสดระหว่างกะที่เปิดอยู่ (เช่น หยิบไปฝากธนาคาร, นับผิดตอนเปิดกะ)
+create or replace function public.add_cash_adjustment(
+  p_shift_id uuid,
+  p_amount numeric,
+  p_reason text
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+  if not exists (select 1 from cash_shifts where id = p_shift_id and status = 'open') then
+    raise exception 'ปรับยอดได้เฉพาะกะที่ยังเปิดอยู่เท่านั้น';
+  end if;
+  if p_reason is null or btrim(p_reason) = '' then
+    raise exception 'กรุณาระบุเหตุผลที่ปรับยอด';
+  end if;
+
+  insert into account_adjustments (account, cash_shift_id, amount, reason, created_by)
+  values ('cash', p_shift_id, p_amount, p_reason, auth.uid());
+
+  perform public.log_action('cash_adjustment', 'account_adjustments', p_shift_id::text,
+    format('ปรับยอดเงินสดระหว่างกะ %s%s บาท (%s)', case when p_amount >= 0 then '+' else '' end, p_amount, p_reason));
+end;
+$$;
+
+-- ปรับยอดเงินโอน (ไม่ผูกกะ เพราะเงินโอนไม่ต้องนับสดจริง)
+create or replace function public.add_transfer_adjustment(
+  p_amount numeric,
+  p_reason text
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+  if p_reason is null or btrim(p_reason) = '' then
+    raise exception 'กรุณาระบุเหตุผลที่ปรับยอด';
+  end if;
+
+  insert into account_adjustments (account, amount, reason, created_by)
+  values ('transfer', p_amount, p_reason, auth.uid());
+
+  perform public.log_action('transfer_adjustment', 'account_adjustments', null,
+    format('ปรับยอดเงินโอน %s%s บาท (%s)', case when p_amount >= 0 then '+' else '' end, p_amount, p_reason));
+end;
+$$;
+
+revoke execute on function public.add_cash_adjustment from public, anon;
+revoke execute on function public.add_transfer_adjustment from public, anon;
+grant execute on function public.add_cash_adjustment to authenticated;
+grant execute on function public.add_transfer_adjustment to authenticated;

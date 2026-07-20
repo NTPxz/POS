@@ -95,6 +95,7 @@ export type Expense = {
   amount: number;
   expense_date: string;
   note: string | null;
+  payment_method: PaymentMethod;
   user_id: string | null;
   created_at: string;
 };
@@ -215,5 +216,17 @@ export type CashShift = {
   expected_amount: number | null;
   difference: number | null;
   status: CashShiftStatus;
+  created_at: string;
+};
+
+export type AccountType = "cash" | "transfer";
+
+export type AccountAdjustment = {
+  id: string;
+  account: AccountType;
+  cash_shift_id: string | null;
+  amount: number;
+  reason: string;
+  created_by: string | null;
   created_at: string;
 };
