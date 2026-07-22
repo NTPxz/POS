@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { baht, formatNumber } from "@/lib/format";
+import { compressImage } from "@/lib/image";
 import { Category, Product } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
 
@@ -438,17 +439,26 @@ function ProductModal({
       setUploadError("เลือกไฟล์รูปภาพเท่านั้น");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setUploadError("ไฟล์ใหญ่เกิน 5MB");
+    if (file.size > 15 * 1024 * 1024) {
+      setUploadError("ไฟล์ใหญ่เกิน 15MB");
       return;
     }
     setUploading(true);
     setUploadError(null);
-    const ext = file.name.split(".").pop() || "jpg";
-    const path = `${crypto.randomUUID()}.${ext}`;
+    let uploadBody: File | Blob = file;
+    try {
+      uploadBody = await compressImage(file);
+    } catch {
+      // ถ้าย่อไม่สำเร็จ (เบราว์เซอร์เก่า ฯลฯ) ใช้ไฟล์ต้นฉบับแทน
+    }
+    const path = `${crypto.randomUUID()}.jpg`;
     const { error: uploadErr } = await supabase.storage
       .from("product-images")
-      .upload(path, file, { cacheControl: "3600", upsert: false });
+      .upload(path, uploadBody, {
+        cacheControl: "31536000",
+        contentType: "image/jpeg",
+        upsert: false,
+      });
     if (uploadErr) {
       setUploadError(`อัปโหลดไม่สำเร็จ: ${uploadErr.message}`);
       setUploading(false);
