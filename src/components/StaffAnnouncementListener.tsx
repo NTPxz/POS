@@ -14,7 +14,7 @@ export default function StaffAnnouncementListener() {
   const supabase = useMemo(() => createClient(), []);
   const { profile } = useProfile();
   const [current, setCurrent] = useState<Announcement | null>(null);
-  const playMelody = useChime();
+  const { play: playMelody, stop: stopChime } = useChime();
 
   const showIfUnseen = useCallback(
     (a: Announcement) => {
@@ -57,6 +57,7 @@ export default function StaffAnnouncementListener() {
   }, [profile, supabase, showIfUnseen]);
 
   function dismiss() {
+    stopChime();
     if (current) localStorage.setItem(DISMISSED_KEY, current.id);
     setCurrent(null);
   }

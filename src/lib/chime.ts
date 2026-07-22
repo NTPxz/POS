@@ -45,6 +45,7 @@ type PlayOptions = {
  */
 export function useChime() {
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const activeRef = useRef<{ osc: OscillatorNode; gain: GainNode }[]>([]);
 
   useEffect(() => {
     function unlock() {
@@ -64,7 +65,25 @@ export function useChime() {
     };
   }, []);
 
-  return useCallback((notes: ChimeNote[], opts?: PlayOptions) => {
+  // หยุดเสียงที่กำลัง/กำลังจะเล่นทั้งหมดทันที — ใช้ตอนกด action ปิด/รับทราบแจ้งเตือน
+  const stop = useCallback(() => {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    for (const { osc, gain } of activeRef.current) {
+      try {
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(gain.gain.value, now);
+        gain.gain.linearRampToValueAtTime(0.0001, now + 0.03);
+        osc.stop(now + 0.03);
+      } catch {
+        // อาจหยุดไปแล้ว/ยังไม่เริ่มเล่น ไม่ใช่ error ร้ายแรง
+      }
+    }
+    activeRef.current = [];
+  }, []);
+
+  const play = useCallback((notes: ChimeNote[], opts?: PlayOptions) => {
     try {
       const Ctx =
         window.AudioContext ||
@@ -95,6 +114,11 @@ export function useChime() {
           gainNode.connect(ctx.destination);
           osc.start(start);
           osc.stop(start + note.dur + 0.02);
+          const entry = { osc, gain: gainNode };
+          activeRef.current.push(entry);
+          osc.onended = () => {
+            activeRef.current = activeRef.current.filter((n) => n !== entry);
+          };
           t += note.dur + 0.02;
         }
       }
@@ -102,4 +126,6 @@ export function useChime() {
       // เบราว์เซอร์บางตัวอาจบล็อกก่อน user gesture — ไม่ใช่ error ร้ายแรง ปล่อยผ่าน
     }
   }, []);
+
+  return { play, stop };
 }

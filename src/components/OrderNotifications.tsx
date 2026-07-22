@@ -27,7 +27,7 @@ export default function OrderNotifications() {
   const { profile } = useProfile();
   const { triggerAlert, goToTables } = useTableAlert();
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const playMelody = useChime();
+  const { play: playMelody, stop: stopChime } = useChime();
 
   const pendingRef = useRef<
     Map<string, { saleId: string; items: { name: string; qty: number }[]; timer: ReturnType<typeof setTimeout> | null }>
@@ -212,7 +212,10 @@ export default function OrderNotifications() {
           </div>
           <button
             className="min-w-0 flex-1 text-left"
-            onClick={() => goToTables(t.tableId)}
+            onClick={() => {
+              stopChime();
+              goToTables(t.tableId);
+            }}
           >
             <p
               className={`font-semibold ${
@@ -229,7 +232,10 @@ export default function OrderNotifications() {
           </button>
           <button
             className="shrink-0 rounded-full p-1 text-neutral-400 hover:bg-black/5"
-            onClick={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))}
+            onClick={() => {
+              stopChime();
+              setToasts((prev) => prev.filter((x) => x.id !== t.id));
+            }}
           >
             <X className="h-4 w-4" strokeWidth={2} />
           </button>
