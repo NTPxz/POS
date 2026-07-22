@@ -1633,3 +1633,35 @@ drop trigger if exists trg_push_announcement on public.announcements;
 create trigger trg_push_announcement
   after insert on public.announcements
   for each row execute function public.notify_push_on_announcement();
+
+-- ยกเลิกการเรียกเก็บเงิน เผื่อลูกค้ากดผิด (staff เท่านั้น)
+create or replace function public.cancel_bill_request(p_sale_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_table_name text;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  update sales set bill_requested_at = null
+    where id = p_sale_id and status = 'open' and bill_requested_at is not null;
+  if not found then
+    raise exception 'ไม่พบการเรียกเก็บเงินที่ต้องยกเลิก (อาจถูกยกเลิกไปแล้ว)';
+  end if;
+
+  select dt.name into v_table_name
+    from sales s join dining_tables dt on dt.id = s.table_id
+    where s.id = p_sale_id;
+
+  perform public.log_action('cancel_bill_request', 'sales', p_sale_id::text,
+    format('ยกเลิกการเรียกเก็บเงินของ%s (ลูกค้ากดผิด)', coalesce(v_table_name, 'โต๊ะ')));
+end;
+$$;
+
+revoke execute on function public.cancel_bill_request from public, anon;
+grant execute on function public.cancel_bill_request to authenticated;

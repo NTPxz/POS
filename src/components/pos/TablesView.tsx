@@ -281,6 +281,8 @@ function TableOrderSession({
   const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [editingCustomerName, setEditingCustomerName] = useState(false);
+  const [cancelingBill, setCancelingBill] = useState(false);
+  const [cancelBillError, setCancelBillError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -365,6 +367,19 @@ function TableOrderSession({
     onChanged();
   }
 
+  async function cancelBillRequest() {
+    if (!sale) return;
+    setCancelingBill(true);
+    setCancelBillError(null);
+    const { error } = await supabase.rpc("cancel_bill_request", { p_sale_id: sale.id });
+    setCancelingBill(false);
+    if (error) {
+      setCancelBillError(`ยกเลิกไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    onChanged();
+  }
+
   async function advanceItemStatus(saleItemId: string, newStatus: SaleItemStatus) {
     setStatusBusyId(saleItemId);
     setStatusError(null);
@@ -433,6 +448,27 @@ function TableOrderSession({
               </button>
             ))}
         </div>
+
+        {sale?.bill_requested_at && (
+          <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <span className="flex items-center gap-2 text-sm font-medium text-amber-700">
+                <Bell className="h-4 w-4 shrink-0" strokeWidth={2} />
+                ลูกค้ากดเรียกเก็บเงินแล้ว
+              </span>
+              <button
+                className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-amber-700 shadow-sm hover:bg-amber-100 disabled:opacity-60"
+                onClick={cancelBillRequest}
+                disabled={cancelingBill}
+              >
+                {cancelingBill ? "กำลังยกเลิก..." : "ยกเลิก (ลูกค้ากดผิด)"}
+              </button>
+            </div>
+            {cancelBillError && (
+              <p className="mt-1.5 text-xs text-red-600">{cancelBillError}</p>
+            )}
+          </div>
+        )}
 
         <ProductPicker
           products={products}
