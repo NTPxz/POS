@@ -8,6 +8,7 @@ import {
   History,
   LayoutDashboard,
   LogOut,
+  Megaphone,
   Package,
   Percent,
   Receipt,
@@ -21,6 +22,7 @@ import { useProfile } from "@/components/ProfileProvider";
 import { hasRole, Role, ROLE_LABELS } from "@/lib/types";
 import OrderNotifications from "@/components/OrderNotifications";
 import PushSetup from "@/components/PushSetup";
+import StaffAnnouncementListener from "@/components/StaffAnnouncementListener";
 import { useWakeLock } from "@/lib/useWakeLock";
 import { useTableAlert } from "@/components/TableAlertProvider";
 
@@ -39,6 +41,7 @@ const NAV_ITEMS: {
   { href: "/expenses", label: "รายจ่าย", icon: Wallet, minRole: "owner" },
   { href: "/staff", label: "พนักงาน", icon: Users, minRole: "owner" },
   { href: "/promotions", label: "โปรโมชั่น", icon: Percent, minRole: "owner" },
+  { href: "/announcements", label: "ประกาศ", icon: Megaphone, minRole: "owner" },
   { href: "/log", label: "Log", icon: History, minRole: "owner" },
 ];
 
@@ -63,6 +66,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex h-dvh overflow-hidden">
       <OrderNotifications />
       <PushSetup />
+      <StaffAnnouncementListener />
       {/* Sidebar สำหรับจอใหญ่ (iPad แนวนอน / PC) */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-neutral-200 bg-white md:flex">
         <div className="flex items-center gap-2.5 px-5 py-5">

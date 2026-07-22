@@ -1579,3 +1579,36 @@ revoke execute on function public.add_cash_adjustment from public, anon;
 revoke execute on function public.add_transfer_adjustment from public, anon;
 grant execute on function public.add_cash_adjustment to authenticated;
 grant execute on function public.add_transfer_adjustment to authenticated;
+
+-- ============================================================
+-- ประกาศจากเจ้าของร้านถึงพนักงาน (ขึ้นเป็น modal กลางจอ ปิดได้)
+-- ============================================================
+create table if not exists public.announcements (
+  id uuid primary key default gen_random_uuid(),
+  message text not null check (char_length(message) <= 500),
+  created_by uuid references auth.users (id),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_announcements_created_at on public.announcements (created_at desc);
+
+alter table public.announcements enable row level security;
+
+drop policy if exists "authenticated read announcements" on public.announcements;
+create policy "authenticated read announcements" on public.announcements
+  for select to authenticated using (true);
+
+drop policy if exists "owner insert announcements" on public.announcements;
+create policy "owner insert announcements" on public.announcements
+  for insert to authenticated with check (public.is_owner());
+
+drop policy if exists "owner delete announcements" on public.announcements;
+create policy "owner delete announcements" on public.announcements
+  for delete to authenticated using (public.is_owner());
+
+drop trigger if exists trg_log_announcements on public.announcements;
+create trigger trg_log_announcements
+  after insert or delete on public.announcements
+  for each row execute function public.log_activity();
+
+alter publication supabase_realtime add table public.announcements;

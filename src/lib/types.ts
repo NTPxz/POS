@@ -230,3 +230,10 @@ export type AccountAdjustment = {
   created_by: string | null;
   created_at: string;
 };
+
+export type Announcement = {
+  id: string;
+  message: string;
+  created_by: string | null;
+  created_at: string;
+};
