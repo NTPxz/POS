@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Minus, Plus, ShoppingCart, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { baht, formatNumber } from "@/lib/format";
-import { CartItem, Category, PaymentMethod, Product } from "@/lib/types";
+import { CartItem, Category, PaymentMethod, Product, Promotion } from "@/lib/types";
 import ProductPicker from "@/components/pos/ProductPicker";
 import PaymentFields from "@/components/pos/PaymentFields";
 
@@ -274,8 +274,40 @@ function CheckoutModal({
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [promotions, setPromotions] = useState<
+    (Promotion & { promotion_products: { product_id: string }[] })[]
+  >([]);
 
-  const discount = Math.max(parseFloat(discountStr) || 0, 0);
+  useEffect(() => {
+    supabase
+      .from("promotions")
+      .select("*, promotion_products(product_id)")
+      .eq("is_active", true)
+      .then(({ data }) => {
+        setPromotions(
+          (data as (Promotion & { promotion_products: { product_id: string }[] })[]) ?? []
+        );
+      });
+  }, [supabase]);
+
+  const promoDiscount = useMemo(() => {
+    let sum = 0;
+    for (const promo of promotions) {
+      if (promo.type !== "buy_x_get_fixed_discount") continue;
+      if (!promo.threshold_qty || !promo.discount_amount) continue;
+      const scopedIds = new Set(promo.promotion_products.map((pp) => pp.product_id));
+      const qty = cart
+        .filter((i) => scopedIds.has(i.product.id))
+        .reduce((s, i) => s + i.quantity, 0);
+      if (qty > 0) {
+        sum += Math.floor(qty / promo.threshold_qty) * promo.discount_amount;
+      }
+    }
+    return sum;
+  }, [promotions, cart]);
+
+  const manualDiscount = Math.max(parseFloat(discountStr) || 0, 0);
+  const discount = manualDiscount + promoDiscount;
   const total = Math.max(subtotal - discount, 0);
   const received = parseFloat(receivedStr) || 0;
   const cashInsufficient = method === "cash" && received < total;
@@ -288,7 +320,7 @@ function CheckoutModal({
         product_id: i.product.id,
         quantity: i.quantity,
       })),
-      p_discount: discount,
+      p_discount: manualDiscount,
       p_payment_method: method,
       p_received: method === "cash" ? received : null,
       p_note: note.trim() || null,
@@ -324,8 +356,14 @@ function CheckoutModal({
               <span>ยอดรวม ({cart.reduce((s, i) => s + i.quantity, 0)} ชิ้น)</span>
               <span>{baht(subtotal)}</span>
             </div>
+            {promoDiscount > 0 && (
+              <div className="mt-2 flex justify-between text-sm text-green-600">
+                <span>ส่วนลดโปรโมชั่น (อัตโนมัติ)</span>
+                <span className="font-semibold">-{baht(promoDiscount)}</span>
+              </div>
+            )}
             <div className="mt-2 flex items-center justify-between gap-3">
-              <label className="text-sm text-neutral-500">ส่วนลด (บาท)</label>
+              <label className="text-sm text-neutral-500">ส่วนลดเพิ่มเติม (บาท)</label>
               <input
                 type="number"
                 inputMode="decimal"

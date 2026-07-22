@@ -247,6 +247,9 @@ declare
   v_item jsonb;
   v_product products%rowtype;
   v_qty numeric;
+  v_promo_discount numeric;
+  v_final_discount numeric;
+  v_final_total numeric;
 begin
   if auth.uid() is null then
     raise exception 'ต้องล็อกอินก่อนทำรายการขาย';
@@ -298,8 +301,19 @@ begin
     end if;
   end loop;
 
+  -- ผูกโปรโมชั่นเข้ากับขายด่วนด้วย (เดิมมีแค่โหมดเปิดโต๊ะ) รวมกับส่วนลดที่พนักงานกรอกเอง
+  v_promo_discount := public.calculate_promo_discount(v_sale_id);
+  v_final_discount := coalesce(p_discount, 0) + v_promo_discount;
+  v_final_total := greatest(v_subtotal - v_final_discount, 0);
+
+  update sales set
+    discount = v_final_discount,
+    total = v_final_total,
+    change = case when p_received is not null then greatest(p_received - v_final_total, 0) end
+    where id = v_sale_id;
+
   perform public.log_action('checkout', 'sales', v_sale_id::text,
-    format('ขายสินค้า (ขายด่วน) บิล #%s ยอด %s บาท (%s)', v_sale_number, v_total, p_payment_method));
+    format('ขายสินค้า (ขายด่วน) บิล #%s ยอด %s บาท (%s)', v_sale_number, v_final_total, p_payment_method));
 
   return v_sale_id;
 end;
