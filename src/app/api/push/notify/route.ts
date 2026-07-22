@@ -3,14 +3,22 @@ import webpush from "web-push";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type PushPayload = {
-  type: "order" | "bill";
+  type: "order" | "bill" | "announcement";
   table_name?: string;
   product_name?: string;
   quantity?: number;
+  message?: string;
 };
 
 function buildNotification(payload: PushPayload) {
   const tableName = payload.table_name || "โต๊ะ";
+  if (payload.type === "announcement") {
+    return {
+      title: "ประกาศจากเจ้าของร้าน",
+      body: payload.message || "มีประกาศใหม่",
+      tag: "pos-announcement",
+    };
+  }
   if (payload.type === "bill") {
     return {
       title: `เรียกเก็บเงิน • ${tableName}`,

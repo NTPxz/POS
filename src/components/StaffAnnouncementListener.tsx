@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatDateTime } from "@/lib/format";
 import { Announcement } from "@/lib/types";
 import { useProfile } from "@/components/ProfileProvider";
+import { ANNOUNCEMENT_NOTES, useChime } from "@/lib/chime";
 
 const DISMISSED_KEY = "pos-last-dismissed-announcement";
 
@@ -13,13 +14,18 @@ export default function StaffAnnouncementListener() {
   const supabase = useMemo(() => createClient(), []);
   const { profile } = useProfile();
   const [current, setCurrent] = useState<Announcement | null>(null);
+  const playMelody = useChime();
 
-  const showIfUnseen = useCallback((a: Announcement) => {
-    const dismissedId = localStorage.getItem(DISMISSED_KEY);
-    if (dismissedId !== a.id) {
-      setCurrent(a);
-    }
-  }, []);
+  const showIfUnseen = useCallback(
+    (a: Announcement) => {
+      const dismissedId = localStorage.getItem(DISMISSED_KEY);
+      if (dismissedId !== a.id) {
+        setCurrent(a);
+        playMelody(ANNOUNCEMENT_NOTES, { repeats: 3 });
+      }
+    },
+    [playMelody]
+  );
 
   useEffect(() => {
     if (!profile) return;

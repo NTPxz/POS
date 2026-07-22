@@ -1612,3 +1612,24 @@ create trigger trg_log_announcements
   for each row execute function public.log_activity();
 
 alter publication supabase_realtime add table public.announcements;
+
+-- แจ้ง push (OS-level) ให้พนักงานทุกครั้งที่มีประกาศใหม่ด้วย เหมือนออเดอร์/เรียกเก็บเงิน
+create or replace function public.notify_push_on_announcement()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform public.trigger_push_notify(jsonb_build_object(
+    'type', 'announcement',
+    'message', new.message
+  ));
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_push_announcement on public.announcements;
+create trigger trg_push_announcement
+  after insert on public.announcements
+  for each row execute function public.notify_push_on_announcement();

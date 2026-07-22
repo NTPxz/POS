@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/components/ProfileProvider";
 import { useTableAlert } from "@/components/TableAlertProvider";
 import { PENDING_ORDER_REMINDER_MS } from "@/lib/constants";
+import { BILL_NOTES, ORDER_NOTES, useChime } from "@/lib/chime";
 
 type Toast = {
   id: string;
@@ -21,93 +22,24 @@ const BATCH_MS = 900;
 // เช็คซ้ำทุกกี่มิลลิวินาที (ตราบใดที่ยังมีรายการค้างเกินกำหนดอยู่ จะเตือนซ้ำทุกรอบนี้)
 const STALE_CHECK_INTERVAL_MS = 10 * 1000;
 
-// ทำนองแจ้งเตือน — เพลงสั้นๆ วนซ้ำจนยาวรวม ~10 วิ ให้ได้ยินชัดในร้านที่มีเสียงดัง
-const ORDER_NOTES = [
-  { freq: 523.25, dur: 0.24 }, // C5
-  { freq: 659.25, dur: 0.24 }, // E5
-  { freq: 783.99, dur: 0.24 }, // G5
-  { freq: 1046.5, dur: 0.24 }, // C6
-  { freq: 783.99, dur: 0.24 }, // G5
-  { freq: 659.25, dur: 0.24 }, // E5
-  { freq: 783.99, dur: 0.24 }, // G5
-  { freq: 1046.5, dur: 0.5 }, // C6 (โน้ตยาวปิดท้าย)
-];
-const BILL_NOTES = [
-  { freq: 880, dur: 0.23 },
-  { freq: 659.25, dur: 0.23 },
-  { freq: 880, dur: 0.23 },
-  { freq: 659.25, dur: 0.23 },
-  { freq: 880, dur: 0.23 },
-  { freq: 659.25, dur: 0.23 },
-  { freq: 880, dur: 0.23 },
-  { freq: 659.25, dur: 0.5 },
-];
-const MELODY_REPEATS = 4;
-const CYCLE_GAP = 0.3;
-const NOTE_GAIN_PEAK = 0.65;
-
 export default function OrderNotifications() {
   const supabase = useMemo(() => createClient(), []);
   const { profile } = useProfile();
   const { triggerAlert, goToTables } = useTableAlert();
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const playMelody = useChime();
 
-  const audioCtxRef = useRef<AudioContext | null>(null);
   const pendingRef = useRef<
     Map<string, { saleId: string; items: { name: string; qty: number }[]; timer: ReturnType<typeof setTimeout> | null }>
   >(new Map());
   const notifiedBillRef = useRef<Set<string>>(new Set());
 
-  useEffect(() => {
-    function unlock() {
-      if (!audioCtxRef.current) {
-        const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-        if (Ctx) audioCtxRef.current = new Ctx();
-      }
-      audioCtxRef.current?.resume().catch(() => {});
-    }
-    document.addEventListener("click", unlock);
-    document.addEventListener("touchstart", unlock);
-    return () => {
-      document.removeEventListener("click", unlock);
-      document.removeEventListener("touchstart", unlock);
-    };
-  }, []);
-
-  const playChime = useCallback((tone: "order" | "bill" | "reminder") => {
-    try {
-      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!Ctx) return;
-      const ctx = audioCtxRef.current ?? new Ctx();
-      audioCtxRef.current = ctx;
-      if (ctx.state === "suspended") ctx.resume().catch(() => {});
-
-      const notes = tone === "order" ? ORDER_NOTES : BILL_NOTES;
-      const cycleDur = notes.reduce((sum, n) => sum + n.dur, 0) + 0.02 * notes.length;
-
-      const now = ctx.currentTime;
-      for (let rep = 0; rep < MELODY_REPEATS; rep++) {
-        let t = now + rep * (cycleDur + CYCLE_GAP);
-        for (const note of notes) {
-          const start = t;
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = "triangle";
-          osc.frequency.value = note.freq;
-          gain.gain.setValueAtTime(0.0001, start);
-          gain.gain.exponentialRampToValueAtTime(NOTE_GAIN_PEAK, start + 0.02);
-          gain.gain.exponentialRampToValueAtTime(0.0001, start + note.dur);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start(start);
-          osc.stop(start + note.dur + 0.02);
-          t += note.dur + 0.02;
-        }
-      }
-    } catch {
-      // เบราว์เซอร์บางตัวอาจบล็อกก่อน user gesture — ไม่ใช่ error ร้ายแรง ปล่อยผ่าน
-    }
-  }, []);
+  const playChime = useCallback(
+    (tone: "order" | "bill" | "reminder") => {
+      playMelody(tone === "order" ? ORDER_NOTES : BILL_NOTES);
+    },
+    [playMelody]
+  );
 
   const pushToast = useCallback(
     (toast: Toast) => {
