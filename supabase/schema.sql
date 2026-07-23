@@ -1416,8 +1416,8 @@ create unique index if not exists idx_cash_shifts_one_open on public.cash_shifts
 alter table public.cash_shifts enable row level security;
 
 drop policy if exists "authenticated full access" on public.cash_shifts;
-create policy "authenticated full access" on public.cash_shifts
-  for all to authenticated using (true) with check (true);
+create policy "owner full access" on public.cash_shifts
+  for all to authenticated using (public.is_owner()) with check (public.is_owner());
 
 drop trigger if exists trg_log_cash_shifts on public.cash_shifts;
 create trigger trg_log_cash_shifts
@@ -1435,8 +1435,8 @@ as $$
 declare
   v_id uuid;
 begin
-  if auth.uid() is null then
-    raise exception 'ต้องล็อกอินก่อน';
+  if not public.is_owner() then
+    raise exception 'สำหรับเจ้าของร้านเท่านั้น';
   end if;
   if exists (select 1 from cash_shifts where status = 'open') then
     raise exception 'มีกะที่เปิดอยู่แล้ว ต้องปิดกะเดิมก่อน';
@@ -1470,8 +1470,8 @@ declare
   v_expected numeric;
   v_diff numeric;
 begin
-  if auth.uid() is null then
-    raise exception 'ต้องล็อกอินก่อน';
+  if not public.is_owner() then
+    raise exception 'สำหรับเจ้าของร้านเท่านั้น';
   end if;
 
   select * into v_shift from cash_shifts where id = p_shift_id and status = 'open' for update;
@@ -1546,8 +1546,8 @@ create index if not exists idx_account_adjustments_shift on public.account_adjus
 alter table public.account_adjustments enable row level security;
 
 drop policy if exists "authenticated full access" on public.account_adjustments;
-create policy "authenticated full access" on public.account_adjustments
-  for all to authenticated using (true) with check (true);
+create policy "owner full access" on public.account_adjustments
+  for all to authenticated using (public.is_owner()) with check (public.is_owner());
 
 drop trigger if exists trg_log_account_adjustments on public.account_adjustments;
 create trigger trg_log_account_adjustments
@@ -1565,8 +1565,8 @@ security definer
 set search_path = public
 as $$
 begin
-  if auth.uid() is null then
-    raise exception 'ต้องล็อกอินก่อน';
+  if not public.is_owner() then
+    raise exception 'สำหรับเจ้าของร้านเท่านั้น';
   end if;
   if not exists (select 1 from cash_shifts where id = p_shift_id and status = 'open') then
     raise exception 'ปรับยอดได้เฉพาะกะที่ยังเปิดอยู่เท่านั้น';
@@ -1593,8 +1593,8 @@ security definer
 set search_path = public
 as $$
 begin
-  if auth.uid() is null then
-    raise exception 'ต้องล็อกอินก่อน';
+  if not public.is_owner() then
+    raise exception 'สำหรับเจ้าของร้านเท่านั้น';
   end if;
   if p_reason is null or btrim(p_reason) = '' then
     raise exception 'กรุณาระบุเหตุผลที่ปรับยอด';

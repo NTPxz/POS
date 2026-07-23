@@ -17,7 +17,7 @@ import RequireRole from "@/components/RequireRole";
 
 export default function CashPage() {
   return (
-    <RequireRole min="staff">
+    <RequireRole min="owner">
       <CashPageContent />
     </RequireRole>
   );
