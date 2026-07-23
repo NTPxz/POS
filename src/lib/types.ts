@@ -237,3 +237,14 @@ export type Announcement = {
   created_by: string | null;
   created_at: string;
 };
+
+export type ShoppingListItem = {
+  id: string;
+  name: string;
+  note: string | null;
+  is_checked: boolean;
+  created_by: string | null;
+  checked_by: string | null;
+  checked_at: string | null;
+  created_at: string;
+};

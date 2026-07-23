@@ -1698,3 +1698,25 @@ $$;
 
 revoke execute on function public.cancel_bill_request from public, anon;
 grant execute on function public.cancel_bill_request to authenticated;
+
+-- ============================================================
+-- เช็คลิสต์ของที่ต้องซื้อ — พนักงาน/เจ้าของร้านดูและแก้ไขร่วมกันได้ (แชร์รายการเดียวกันทั้งร้าน)
+-- ============================================================
+create table if not exists public.shopping_list_items (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  note text,
+  is_checked boolean not null default false,
+  created_by uuid references auth.users (id) on delete set null,
+  checked_by uuid references auth.users (id) on delete set null,
+  checked_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+alter table public.shopping_list_items enable row level security;
+
+drop policy if exists "authenticated full access" on public.shopping_list_items;
+create policy "authenticated full access" on public.shopping_list_items
+  for all to authenticated using (true) with check (true);
+
+alter publication supabase_realtime add table public.shopping_list_items;
