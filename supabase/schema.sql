@@ -1355,6 +1355,39 @@ $$;
 revoke execute on function public.calculate_promo_discount from public, anon;
 grant execute on function public.calculate_promo_discount to authenticated;
 
+-- คำนวณส่วนลดโปรใหม่ให้ทุกบิลที่ยังเปิดอยู่ (โต๊ะที่กำลังสั่งอยู่) ทันทีที่โปรโมชั่นเปลี่ยน
+-- (เพิ่ม/ลบเมนูในโปร, เปิด/ปิดโปร, แก้เงื่อนไข) กันปัญหาบิลที่สั่งไปแล้วไม่ได้ส่วนลดจนกว่าจะสั่งเพิ่ม
+create or replace function public.recalculate_open_sales_promo()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_sale record;
+  v_discount numeric;
+begin
+  for v_sale in select id, subtotal, discount from sales where status = 'open' loop
+    v_discount := public.calculate_promo_discount(v_sale.id);
+    if v_discount is distinct from v_sale.discount then
+      update sales set discount = v_discount, total = greatest(v_sale.subtotal - v_discount, 0)
+        where id = v_sale.id;
+    end if;
+  end loop;
+  return null;
+end;
+$$;
+
+drop trigger if exists trg_recalc_promo_on_promotions on public.promotions;
+create trigger trg_recalc_promo_on_promotions
+  after insert or update or delete on public.promotions
+  for each statement execute function public.recalculate_open_sales_promo();
+
+drop trigger if exists trg_recalc_promo_on_promotion_products on public.promotion_products;
+create trigger trg_recalc_promo_on_promotion_products
+  after insert or update or delete on public.promotion_products
+  for each statement execute function public.recalculate_open_sales_promo();
+
 -- ============================================================
 -- ระบบจดเงินสดหน้าร้าน (เงินทอนตั้งต้น) — เปิดกะ/ปิดกะพร้อมนับเงินจริงเทียบยอดคาดการณ์
 -- ============================================================
