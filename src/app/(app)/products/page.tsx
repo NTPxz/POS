@@ -15,8 +15,9 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { baht, formatNumber } from "@/lib/format";
 import { compressImage } from "@/lib/image";
-import { Category, Product } from "@/lib/types";
+import { Category, hasRole, Product } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
+import { useProfile } from "@/components/ProfileProvider";
 
 type ProductForm = {
   name: string;
@@ -52,6 +53,8 @@ export default function ProductsPage() {
 
 function ProductsPageContent() {
   const supabase = useMemo(() => createClient(), []);
+  const { profile } = useProfile();
+  const isOwner = !!profile && hasRole(profile.role, "owner");
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -194,8 +197,12 @@ function ProductsPageContent() {
                   <th className="px-4 py-3 font-medium">สินค้า</th>
                   <th className="px-4 py-3 font-medium">หมวดหมู่</th>
                   <th className="px-4 py-3 text-right font-medium">ราคาขาย</th>
-                  <th className="px-4 py-3 text-right font-medium">ต้นทุน</th>
-                  <th className="px-4 py-3 text-right font-medium">กำไร/ชิ้น</th>
+                  {isOwner && (
+                    <>
+                      <th className="px-4 py-3 text-right font-medium">ต้นทุน</th>
+                      <th className="px-4 py-3 text-right font-medium">กำไร/ชิ้น</th>
+                    </>
+                  )}
                   <th className="px-4 py-3 text-right font-medium">คงเหลือ</th>
                   <th className="px-4 py-3 text-center font-medium">ของหมด</th>
                   <th className="px-4 py-3"></th>
@@ -230,12 +237,16 @@ function ProductsPageContent() {
                       <td className="px-4 py-3 text-right font-semibold">
                         {baht(p.price)}
                       </td>
-                      <td className="px-4 py-3 text-right text-neutral-500">
-                        {baht(p.cost)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-green-600">
-                        {baht(p.price - p.cost)}
-                      </td>
+                      {isOwner && (
+                        <>
+                          <td className="px-4 py-3 text-right text-neutral-500">
+                            {baht(p.cost)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-green-600">
+                            {baht(p.price - p.cost)}
+                          </td>
+                        </>
+                      )}
                       <td className="px-4 py-3 text-right">
                         {p.track_stock ? (
                           <span
@@ -341,12 +352,14 @@ function ProductsPageContent() {
                         ขาย{" "}
                         <span className="font-bold text-neutral-900">
                           {baht(p.price)}
-                        </span>{" "}
-                        · ทุน {baht(p.cost)}
+                        </span>
+                        {isOwner && ` · ทุน ${baht(p.cost)}`}
                       </p>
-                      <p className="text-green-600">
-                        กำไร {baht(p.price - p.cost)}/ชิ้น
-                      </p>
+                      {isOwner && (
+                        <p className="text-green-600">
+                          กำไร {baht(p.price - p.cost)}/ชิ้น
+                        </p>
+                      )}
                     </div>
                     <div className="flex gap-1">
                       <button
@@ -405,6 +418,8 @@ function ProductModal({
   onSaved: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
+  const { profile } = useProfile();
+  const isOwner = !!profile && hasRole(profile.role, "owner");
   const [form, setForm] = useState<ProductForm>(
     product
       ? {
@@ -527,7 +542,7 @@ function ProductModal({
             />
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className={isOwner ? "grid grid-cols-2 gap-3" : ""}>
             <Field label="ราคาขาย (บาท) *">
               <input
                 type="number"
@@ -540,20 +555,22 @@ function ProductModal({
                 required
               />
             </Field>
-            <Field label="ต้นทุน (บาท)">
-              <input
-                type="number"
-                inputMode="decimal"
-                min={0}
-                step="any"
-                className="input"
-                value={form.cost}
-                onChange={(e) => set({ cost: e.target.value })}
-              />
-            </Field>
+            {isOwner && (
+              <Field label="ต้นทุน (บาท)">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="any"
+                  className="input"
+                  value={form.cost}
+                  onChange={(e) => set({ cost: e.target.value })}
+                />
+              </Field>
+            )}
           </div>
 
-          {price > 0 && (
+          {isOwner && price > 0 && (
             <p className="rounded-xl bg-green-50 px-4 py-2.5 text-sm text-green-700">
               กำไรต่อชิ้น: <b>{baht(price - cost)}</b>{" "}
               {price > 0 && `(${(((price - cost) / price) * 100).toFixed(1)}%)`}

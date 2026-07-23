@@ -10,8 +10,9 @@ import {
   formatNumber,
   toDateInput,
 } from "@/lib/format";
-import { PAYMENT_LABELS, SaleWithItems } from "@/lib/types";
+import { hasRole, PAYMENT_LABELS, SaleWithItems } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
+import { useProfile } from "@/components/ProfileProvider";
 
 type SaleRow = SaleWithItems & { dining_tables: { name: string } | null };
 
@@ -25,6 +26,8 @@ export default function SalesPage() {
 
 function SalesPageContent() {
   const supabase = useMemo(() => createClient(), []);
+  const { profile } = useProfile();
+  const isOwner = !!profile && hasRole(profile.role, "owner");
   const today = toDateInput(new Date());
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
@@ -124,7 +127,7 @@ function SalesPageContent() {
       </div>
 
       {/* สรุปช่วงที่เลือก */}
-      <div className="mb-4 grid grid-cols-3 gap-3">
+      <div className={`mb-4 grid gap-3 ${isOwner ? "grid-cols-3" : "grid-cols-2"}`}>
         <div className="card p-4">
           <p className="text-xs text-neutral-500 md:text-sm">จำนวนบิล</p>
           <p className="text-lg font-bold md:text-2xl">
@@ -137,12 +140,14 @@ function SalesPageContent() {
             {baht(totalRevenue)}
           </p>
         </div>
-        <div className="card p-4">
-          <p className="text-xs text-neutral-500 md:text-sm">กำไร</p>
-          <p className="text-lg font-bold text-green-600 md:text-2xl">
-            {baht(totalProfit)}
-          </p>
-        </div>
+        {isOwner && (
+          <div className="card p-4">
+            <p className="text-xs text-neutral-500 md:text-sm">กำไร</p>
+            <p className="text-lg font-bold text-green-600 md:text-2xl">
+              {baht(totalProfit)}
+            </p>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -226,9 +231,11 @@ function SalesPageContent() {
                     <p className={`text-lg font-bold ${voided ? "line-through" : ""}`}>
                       {baht(Number(sale.total))}
                     </p>
-                    <p className="text-xs text-green-600">
-                      กำไร {baht(Number(sale.total) - Number(sale.cost_total))}
-                    </p>
+                    {isOwner && (
+                      <p className="text-xs text-green-600">
+                        กำไร {baht(Number(sale.total) - Number(sale.cost_total))}
+                      </p>
+                    )}
                   </div>
                 </div>
 
