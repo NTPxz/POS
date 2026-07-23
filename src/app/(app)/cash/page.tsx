@@ -122,6 +122,9 @@ function CashPageContent() {
   const expectedAmount = openShift
     ? Number(openShift.opening_amount) + cashSales - cashExpenses + adjustmentsTotal
     : 0;
+  // เงินสดทั้งหมดตอนนี้: ถ้ากะเปิดอยู่ใช้ยอดคาดการณ์ของกะนี้ ถ้าไม่มีกะเปิดใช้ยอดที่นับจริงตอนปิดกะล่าสุด
+  const lastClosingAmount = history[0]?.closing_amount != null ? Number(history[0].closing_amount) : 0;
+  const totalCashNow = openShift ? expectedAmount : lastClosingAmount;
 
   async function handleOpen(e: React.FormEvent) {
     e.preventDefault();
@@ -169,6 +172,21 @@ function CashPageContent() {
       <h1 className="mb-4 text-xl font-bold md:text-2xl">เงินสด / เงินโอน</h1>
 
       <div className="mx-auto max-w-md space-y-6">
+        {/* สรุปเช็คบัญชีร้าน — เงินสด/เงินโอนที่มีทั้งหมดตอนนี้ */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="card p-4">
+            <p className="text-xs text-neutral-500 md:text-sm">เงินสดทั้งหมด</p>
+            <p className="text-lg font-bold text-brand-600 md:text-2xl">
+              {baht(totalCashNow)}
+            </p>
+          </div>
+          <div className="card p-4">
+            <p className="text-xs text-neutral-500 md:text-sm">เงินโอนทั้งหมด</p>
+            <p className="text-lg font-bold text-brand-600 md:text-2xl">
+              {baht(transferBalance)}
+            </p>
+          </div>
+        </div>
         {/* เงินสด */}
         {!openShift ? (
           <div className="card p-5">
