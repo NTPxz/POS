@@ -140,8 +140,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </div>
 
-        {/* Bottom nav สำหรับมือถือ */}
-        <nav className="flex shrink-0 border-t border-neutral-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
+        {/* Bottom nav สำหรับมือถือ — โชว์ทีละ 4 อันพอดีจอ ถ้าเกินเลื่อนซ้าย/ขวาเอา */}
+        <nav className="no-scrollbar flex shrink-0 overflow-x-auto border-t border-neutral-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
           {visibleItems.map((item) => {
             const active = pathname === item.href;
             const Icon = item.icon;
@@ -156,7 +156,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     goToTables(alertTableId ?? undefined);
                   }
                 }}
-                className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium ${
+                className={`flex w-1/4 shrink-0 flex-col items-center gap-0.5 py-2.5 text-xs font-medium ${
                   active ? "text-brand-600" : "text-neutral-500"
                 }`}
               >
@@ -172,7 +172,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           })}
           <button
             onClick={handleLogout}
-            className="flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium text-neutral-500"
+            className="flex w-1/4 shrink-0 flex-col items-center gap-0.5 py-2.5 text-xs font-medium text-neutral-500"
           >
             <LogOut className="h-5 w-5 shrink-0" strokeWidth={2} />
             <span className="w-full truncate text-center">ออก</span>
