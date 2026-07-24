@@ -386,7 +386,7 @@ export default function CustomerOrderPage({
                       </div>
                       <input
                         className="input mt-2 py-1.5 text-sm"
-                        placeholder="หมายเหตุ เช่น ไม่ใส่ผัก, เผ็ดน้อย (ถ้ามี)"
+                        placeholder="หมายเหตุ เช่น เผ็ดน้อย (ถ้ามี)"
                         value={item.note}
                         maxLength={200}
                         onChange={(e) => setItemNote(item.product.id, e.target.value)}
