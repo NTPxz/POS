@@ -65,6 +65,7 @@ export type SaleItem = {
   total: number;
   ordered_by: "staff" | "customer";
   status: SaleItemStatus;
+  note: string | null;
   created_at: string;
 };
 
@@ -177,6 +178,7 @@ export type TableOrderItem = {
   price: number;
   total: number;
   status: SaleItemStatus;
+  note: string | null;
 };
 
 export type TableOrder = {

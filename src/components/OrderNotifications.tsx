@@ -30,7 +30,14 @@ export default function OrderNotifications() {
   const { play: playMelody, stop: stopChime } = useChime();
 
   const pendingRef = useRef<
-    Map<string, { saleId: string; items: { name: string; qty: number }[]; timer: ReturnType<typeof setTimeout> | null }>
+    Map<
+      string,
+      {
+        saleId: string;
+        items: { name: string; qty: number; note: string | null }[];
+        timer: ReturnType<typeof setTimeout> | null;
+      }
+    >
   >(new Map());
   const notifiedBillRef = useRef<Set<string>>(new Set());
 
@@ -114,7 +121,9 @@ export default function OrderNotifications() {
       if (!entry) return;
       pendingRef.current.delete(saleId);
       const table = await resolveTable(saleId);
-      const summary = entry.items.map((it) => `${it.name} x${it.qty}`).join(", ");
+      const summary = entry.items
+        .map((it) => (it.note ? `${it.name} x${it.qty} (${it.note})` : `${it.name} x${it.qty}`))
+        .join(", ");
       pushToast({
         id: `order-${saleId}-${Date.now()}`,
         tone: "order",
@@ -136,13 +145,18 @@ export default function OrderNotifications() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "sale_items", filter: "ordered_by=eq.customer" },
         (payload) => {
-          const row = payload.new as { sale_id: string; product_name: string; quantity: number };
+          const row = payload.new as {
+            sale_id: string;
+            product_name: string;
+            quantity: number;
+            note: string | null;
+          };
           let entry = pendingRef.current.get(row.sale_id);
           if (!entry) {
             entry = { saleId: row.sale_id, items: [], timer: null };
             pendingRef.current.set(row.sale_id, entry);
           }
-          entry.items.push({ name: row.product_name, qty: Number(row.quantity) });
+          entry.items.push({ name: row.product_name, qty: Number(row.quantity), note: row.note });
           if (entry.timer) clearTimeout(entry.timer);
           entry.timer = setTimeout(() => flushOrder(row.sale_id), BATCH_MS);
         }

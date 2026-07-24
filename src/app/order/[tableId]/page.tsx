@@ -23,7 +23,7 @@ import {
 } from "@/lib/types";
 import ProductPicker from "@/components/pos/ProductPicker";
 
-type RoundItem = { product: Product; quantity: number };
+type RoundItem = { product: Product; quantity: number; note: string };
 
 const POLL_MS = 12000;
 
@@ -116,7 +116,7 @@ export default function CustomerOrderPage({
           i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i
         );
       }
-      return [...prev, { product, quantity: 1 }];
+      return [...prev, { product, quantity: 1, note: "" }];
     });
     setPanelOpen(true);
   }
@@ -131,6 +131,12 @@ export default function CustomerOrderPage({
     );
   }
 
+  function setItemNote(productId: string, note: string) {
+    setRound((prev) =>
+      prev.map((i) => (i.product.id === productId ? { ...i, note } : i))
+    );
+  }
+
   async function submitRound() {
     if (round.length === 0) return;
     setSubmitting(true);
@@ -140,6 +146,7 @@ export default function CustomerOrderPage({
       p_items: round.map((i) => ({
         product_id: i.product.id,
         quantity: i.quantity,
+        note: i.note.trim() || null,
       })),
     });
     setSubmitting(false);
@@ -307,24 +314,31 @@ export default function CustomerOrderPage({
                   </p>
                   <ul className="space-y-1.5">
                     {order.items.map((item) => (
-                      <li key={item.id} className="flex items-center justify-between gap-2 text-sm">
-                        <span className="min-w-0 truncate text-neutral-600">
-                          {item.product_name} × {formatNumber(Number(item.quantity))}
-                        </span>
-                        <span className="flex shrink-0 items-center gap-2">
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                              item.status === "served"
-                                ? "bg-green-50 text-green-600"
-                                : item.status === "accepted"
-                                  ? "bg-blue-50 text-blue-600"
-                                  : "bg-amber-50 text-amber-600"
-                            }`}
-                          >
-                            {SALE_ITEM_STATUS_LABELS[item.status]}
+                      <li key={item.id} className="text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="min-w-0 truncate text-neutral-600">
+                            {item.product_name} × {formatNumber(Number(item.quantity))}
                           </span>
-                          <span className="font-medium">{baht(Number(item.total))}</span>
-                        </span>
+                          <span className="flex shrink-0 items-center gap-2">
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                item.status === "served"
+                                  ? "bg-green-50 text-green-600"
+                                  : item.status === "accepted"
+                                    ? "bg-blue-50 text-blue-600"
+                                    : "bg-amber-50 text-amber-600"
+                              }`}
+                            >
+                              {SALE_ITEM_STATUS_LABELS[item.status]}
+                            </span>
+                            <span className="font-medium">{baht(Number(item.total))}</span>
+                          </span>
+                        </div>
+                        {item.note && (
+                          <p className="mt-0.5 truncate text-xs italic text-neutral-400">
+                            หมายเหตุ: {item.note}
+                          </p>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -343,31 +357,40 @@ export default function CustomerOrderPage({
                   {round.map((item) => (
                     <li
                       key={item.product.id}
-                      className="flex items-center gap-2 rounded-xl border border-neutral-200 p-2.5"
+                      className="rounded-xl border border-neutral-200 p-2.5"
                     >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{item.product.name}</p>
-                        <p className="text-xs text-neutral-500">
-                          {baht(item.product.price)} × {formatNumber(item.quantity)}
-                        </p>
+                      <div className="flex items-center gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">{item.product.name}</p>
+                          <p className="text-xs text-neutral-500">
+                            {baht(item.product.price)} × {formatNumber(item.quantity)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => changeQty(item.product.id, -1)}
+                            className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-100 text-sm font-bold text-neutral-600 active:scale-95"
+                          >
+                            −
+                          </button>
+                          <span className="w-6 text-center text-sm font-semibold">
+                            {formatNumber(item.quantity)}
+                          </span>
+                          <button
+                            onClick={() => changeQty(item.product.id, 1)}
+                            className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-100 text-sm font-bold text-neutral-600 active:scale-95"
+                          >
+                            +
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => changeQty(item.product.id, -1)}
-                          className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-100 text-sm font-bold text-neutral-600 active:scale-95"
-                        >
-                          −
-                        </button>
-                        <span className="w-6 text-center text-sm font-semibold">
-                          {formatNumber(item.quantity)}
-                        </span>
-                        <button
-                          onClick={() => changeQty(item.product.id, 1)}
-                          className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-100 text-sm font-bold text-neutral-600 active:scale-95"
-                        >
-                          +
-                        </button>
-                      </div>
+                      <input
+                        className="input mt-2 py-1.5 text-sm"
+                        placeholder="หมายเหตุ เช่น ไม่ใส่ผัก, เผ็ดน้อย (ถ้ามี)"
+                        value={item.note}
+                        maxLength={200}
+                        onChange={(e) => setItemNote(item.product.id, e.target.value)}
+                      />
                     </li>
                   ))}
                 </ul>

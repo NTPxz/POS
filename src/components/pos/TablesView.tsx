@@ -626,6 +626,11 @@ function OrderPanel({
                         <p className="text-xs text-neutral-500">
                           {baht(Number(item.total))}
                         </p>
+                        {item.note && (
+                          <p className="mt-0.5 truncate text-xs font-medium italic text-amber-600">
+                            หมายเหตุ: {item.note}
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center gap-1">
                         <button

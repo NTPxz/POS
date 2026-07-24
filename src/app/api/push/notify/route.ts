@@ -7,6 +7,7 @@ type PushPayload = {
   table_name?: string;
   product_name?: string;
   quantity?: number;
+  note?: string | null;
   message?: string;
 };
 
@@ -26,11 +27,12 @@ function buildNotification(payload: PushPayload) {
       tag: "pos-bill",
     };
   }
+  const itemLine = payload.quantity
+    ? `${payload.product_name ?? "สินค้า"} x${payload.quantity}`
+    : payload.product_name ?? "มีออเดอร์ใหม่";
   return {
     title: `ลูกค้าสั่งอาหาร • ${tableName}`,
-    body: payload.quantity
-      ? `${payload.product_name ?? "สินค้า"} x${payload.quantity}`
-      : payload.product_name ?? "มีออเดอร์ใหม่",
+    body: payload.note ? `${itemLine} (${payload.note})` : itemLine,
     tag: "pos-order",
   };
 }

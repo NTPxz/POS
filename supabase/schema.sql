@@ -955,6 +955,7 @@ declare
   v_item jsonb;
   v_product products%rowtype;
   v_qty numeric;
+  v_note text;
   v_line_total numeric;
   v_line_cost numeric;
   v_round_total numeric := 0;
@@ -988,6 +989,10 @@ begin
     if v_qty is null or v_qty <= 0 or v_qty > 99 then
       raise exception 'จำนวนสินค้าไม่ถูกต้อง';
     end if;
+    v_note := nullif(btrim(v_item ->> 'note'), '');
+    if v_note is not null and length(v_note) > 200 then
+      v_note := left(v_note, 200);
+    end if;
 
     select * into v_product from products
       where id = (v_item ->> 'product_id')::uuid and is_active = true
@@ -1001,8 +1006,8 @@ begin
     v_round_total := v_round_total + v_line_total;
     v_round_count := v_round_count + v_qty;
 
-    insert into sale_items (sale_id, product_id, product_name, price, cost, quantity, total, ordered_by)
-    values (v_sale_id, v_product.id, v_product.name, v_product.price, v_product.cost, v_qty, v_line_total, 'customer');
+    insert into sale_items (sale_id, product_id, product_name, price, cost, quantity, total, ordered_by, note)
+    values (v_sale_id, v_product.id, v_product.name, v_product.price, v_product.cost, v_qty, v_line_total, 'customer', v_note);
 
     if v_product.track_stock then
       update products set stock = stock - v_qty, updated_at = now() where id = v_product.id;
@@ -1047,7 +1052,7 @@ begin
   select coalesce(jsonb_agg(jsonb_build_object(
       'id', si.id, 'product_name', si.product_name,
       'quantity', si.quantity, 'price', si.price, 'total', si.total,
-      'status', si.status
+      'status', si.status, 'note', si.note
     ) order by si.created_at desc), '[]'::jsonb)
     into v_items
     from sale_items si where si.sale_id = v_sale.id;
@@ -1177,7 +1182,8 @@ begin
       'type', 'order',
       'table_name', coalesce(v_table_name, 'โต๊ะ'),
       'product_name', new.product_name,
-      'quantity', new.quantity
+      'quantity', new.quantity,
+      'note', new.note
     ));
   end if;
   return new;
@@ -1720,3 +1726,6 @@ create policy "authenticated full access" on public.shopping_list_items
   for all to authenticated using (true) with check (true);
 
 alter publication supabase_realtime add table public.shopping_list_items;
+
+-- comment/หมายเหตุต่อรายการที่ลูกค้าพิมพ์ตอนสั่งผ่าน QR (เช่น ไม่ใส่ผัก, เผ็ดน้อย) พนักงานต้องเห็นตอนรับออเดอร์
+alter table public.sale_items add column if not exists note text;
