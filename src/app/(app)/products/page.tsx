@@ -64,6 +64,7 @@ function ProductsPageContent() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [catModalOpen, setCatModalOpen] = useState(false);
   const [savingSoldOutId, setSavingSoldOutId] = useState<string | null>(null);
+  const [view, setView] = useState<"list" | "stock">("list");
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -160,6 +161,39 @@ function ProductsPageContent() {
         </div>
       </div>
 
+      {isOwner && (
+        <div className="mb-4 flex gap-2">
+          <button
+            className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
+              view === "list"
+                ? "bg-brand-600 text-white"
+                : "bg-white text-neutral-600 hover:bg-neutral-50"
+            }`}
+            onClick={() => setView("list")}
+          >
+            รายการสินค้า
+          </button>
+          <button
+            className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
+              view === "stock"
+                ? "bg-brand-600 text-white"
+                : "bg-white text-neutral-600 hover:bg-neutral-50"
+            }`}
+            onClick={() => setView("stock")}
+          >
+            ภาพรวม stock
+          </button>
+        </div>
+      )}
+
+      {view === "stock" && isOwner ? (
+        loading ? (
+          <p className="py-16 text-center text-neutral-400">กำลังโหลด...</p>
+        ) : (
+          <StockOverview products={products} categories={categories} />
+        )
+      ) : (
+        <>
       <input
         className="input mb-4 max-w-md"
         placeholder="ค้นหาชื่อสินค้า หรือบาร์โค้ด..."
@@ -382,6 +416,8 @@ function ProductsPageContent() {
           </div>
         </>
       )}
+        </>
+      )}
 
       {modalOpen && (
         <ProductModal
@@ -602,42 +638,57 @@ function ProductModal({
             />
           </Field>
 
-          <label className="flex items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3">
-            <input
-              type="checkbox"
-              className="h-5 w-5 accent-brand-600"
-              checked={form.track_stock}
-              onChange={(e) => set({ track_stock: e.target.checked })}
-            />
-            <span className="text-sm font-medium">
-              นับสต๊อก (ตัดจำนวนอัตโนมัติเมื่อขาย)
-            </span>
-          </label>
+          {isOwner ? (
+            <>
+              <label className="flex items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3">
+                <input
+                  type="checkbox"
+                  className="h-5 w-5 accent-brand-600"
+                  checked={form.track_stock}
+                  onChange={(e) => set({ track_stock: e.target.checked })}
+                />
+                <span className="text-sm font-medium">
+                  นับสต๊อก (ตัดจำนวนอัตโนมัติเมื่อขาย)
+                </span>
+              </label>
 
-          {form.track_stock && (
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="จำนวนคงเหลือ">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  step="any"
-                  className="input"
-                  value={form.stock}
-                  onChange={(e) => set({ stock: e.target.value })}
-                />
-              </Field>
-              <Field label="แจ้งเตือนเมื่อต่ำกว่า">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  step="any"
-                  className="input"
-                  value={form.low_stock_threshold}
-                  onChange={(e) => set({ low_stock_threshold: e.target.value })}
-                />
-              </Field>
-            </div>
+              {form.track_stock && (
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="จำนวนคงเหลือ">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      step="any"
+                      className="input"
+                      value={form.stock}
+                      onChange={(e) => set({ stock: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="แจ้งเตือนเมื่อต่ำกว่า">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step="any"
+                      className="input"
+                      value={form.low_stock_threshold}
+                      onChange={(e) => set({ low_stock_threshold: e.target.value })}
+                    />
+                  </Field>
+                </div>
+              )}
+            </>
+          ) : (
+            product && (
+              <div className="rounded-xl bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
+                {form.track_stock
+                  ? `คงเหลือ ${formatNumber(parseFloat(form.stock) || 0)} ชิ้น (แจ้งเตือนเมื่อต่ำกว่า ${formatNumber(parseFloat(form.low_stock_threshold) || 0)})`
+                  : "ไม่ได้ตั้งค่านับสต๊อกสินค้านี้"}
+                <span className="mt-1 block text-xs text-neutral-400">
+                  แก้ไขจำนวนสต๊อกได้เฉพาะเจ้าของร้าน
+                </span>
+              </div>
+            )
           )}
 
           <Field label="รูปภาพสินค้า (ถ้ามี)">
@@ -810,6 +861,137 @@ function Field({
         {label}
       </label>
       {children}
+    </div>
+  );
+}
+
+function StockOverview({
+  products,
+  categories,
+}: {
+  products: Product[];
+  categories: Category[];
+}) {
+  const catName = (id: string | null) =>
+    categories.find((c) => c.id === id)?.name ?? "-";
+
+  const tracked = products.filter((p) => p.track_stock);
+  const outOfStock = tracked.filter((p) => p.stock <= 0);
+  const lowStock = tracked.filter((p) => p.stock > 0 && p.stock <= p.low_stock_threshold);
+  const totalValue = tracked.reduce((s, p) => s + p.stock * p.cost, 0);
+  const sorted = [...tracked].sort((a, b) => a.stock - b.stock);
+
+  return (
+    <div>
+      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatCard label="สินค้านับสต๊อก" value={formatNumber(tracked.length)} accent="text-neutral-900" />
+        <StatCard label="ใกล้หมด" value={formatNumber(lowStock.length)} accent="text-amber-600" />
+        <StatCard label="หมดแล้ว" value={formatNumber(outOfStock.length)} accent="text-red-600" />
+        <StatCard label="มูลค่าสต๊อกรวม (ตามต้นทุน)" value={baht(totalValue)} accent="text-brand-600" />
+      </div>
+
+      {tracked.length === 0 ? (
+        <div className="py-16 text-center text-neutral-400">
+          <Package className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
+          <p>ยังไม่มีสินค้าที่ตั้งค่านับสต๊อกไว้</p>
+        </div>
+      ) : (
+        <>
+          {/* ตารางสำหรับจอใหญ่ */}
+          <div className="card hidden overflow-x-auto md:block">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-neutral-200 text-left text-neutral-500">
+                  <th className="px-4 py-3 font-medium">สินค้า</th>
+                  <th className="px-4 py-3 font-medium">หมวดหมู่</th>
+                  <th className="px-4 py-3 text-right font-medium">คงเหลือ</th>
+                  <th className="px-4 py-3 text-right font-medium">แจ้งเตือนเมื่อต่ำกว่า</th>
+                  <th className="px-4 py-3 text-right font-medium">ต้นทุน/ชิ้น</th>
+                  <th className="px-4 py-3 text-right font-medium">มูลค่าคงเหลือ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((p) => {
+                  const out = p.stock <= 0;
+                  const low = !out && p.stock <= p.low_stock_threshold;
+                  return (
+                    <tr key={p.id} className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50">
+                      <td className="px-4 py-3 font-medium">{p.name}</td>
+                      <td className="px-4 py-3 text-neutral-500">{catName(p.category_id)}</td>
+                      <td
+                        className={`px-4 py-3 text-right font-semibold ${
+                          out ? "text-red-600" : low ? "text-amber-600" : ""
+                        }`}
+                      >
+                        {formatNumber(p.stock)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-neutral-400">
+                        {formatNumber(p.low_stock_threshold)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-neutral-500">{baht(p.cost)}</td>
+                      <td className="px-4 py-3 text-right font-semibold">
+                        {baht(p.stock * p.cost)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* การ์ดสำหรับมือถือ */}
+          <div className="space-y-2 md:hidden">
+            {sorted.map((p) => {
+              const out = p.stock <= 0;
+              const low = !out && p.stock <= p.low_stock_threshold;
+              return (
+                <div key={p.id} className="card p-3.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{p.name}</p>
+                      <p className="text-xs text-neutral-400">{catName(p.category_id)}</p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        out
+                          ? "bg-red-100 text-red-600"
+                          : low
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-neutral-100 text-neutral-600"
+                      }`}
+                    >
+                      เหลือ {formatNumber(p.stock)}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-xs text-neutral-500">
+                    <span>ต้นทุน {baht(p.cost)}/ชิ้น</span>
+                    <span className="font-semibold text-neutral-900">
+                      มูลค่า {baht(p.stock * p.cost)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent: string;
+}) {
+  return (
+    <div className="card p-4">
+      <p className="text-xs text-neutral-500 md:text-sm">{label}</p>
+      <p className={`mt-1 text-xl font-bold md:text-2xl ${accent}`}>{value}</p>
     </div>
   );
 }
