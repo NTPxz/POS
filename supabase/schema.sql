@@ -652,9 +652,10 @@ declare
   v_qty_delta numeric;
   v_desc text;
   v_promo_discount numeric;
+  v_is_delete boolean;
 begin
-  if auth.uid() is null then
-    raise exception 'ต้องล็อกอินก่อน';
+  if not public.is_owner() then
+    raise exception 'แก้ไข/ลบรายการที่สั่งไปแล้วได้เฉพาะเจ้าของร้านเท่านั้น';
   end if;
 
   select * into v_item from sale_items where id = p_sale_item_id for update;
@@ -672,8 +673,9 @@ begin
   v_old_line_total := v_item.total;
   v_old_line_cost := v_item.cost * v_item.quantity;
   v_qty_delta := coalesce(p_quantity, 0) - v_item.quantity;
+  v_is_delete := p_quantity is null or p_quantity <= 0;
 
-  if p_quantity is null or p_quantity <= 0 then
+  if v_is_delete then
     delete from sale_items where id = p_sale_item_id;
     v_desc := format('ลบ "%s" ออกจากบิล #%s ของ%s', v_item.product_name, v_sale_number, coalesce(v_table_name, 'โต๊ะ'));
   else
@@ -700,6 +702,15 @@ begin
     where id = v_item.sale_id;
 
   perform public.log_action('edit_item', 'sale_items', p_sale_item_id::text, v_desc);
+
+  perform public.trigger_push_notify(jsonb_build_object(
+    'type', 'order_edit',
+    'table_name', coalesce(v_table_name, 'โต๊ะ'),
+    'product_name', v_item.product_name,
+    'is_delete', v_is_delete,
+    'old_quantity', v_item.quantity,
+    'new_quantity', coalesce(p_quantity, 0)
+  ));
 end;
 $$;
 

@@ -271,6 +271,8 @@ function TableOrderSession({
   onChanged: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
+  const { profile } = useProfile();
+  const isOwner = profile?.role === "owner";
   const [round, setRound] = useState<RoundItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -496,6 +498,7 @@ function TableOrderSession({
           statusError={statusError}
           onAdvanceStatus={advanceItemStatus}
           now={now}
+          isOwner={isOwner}
         />
       </div>
 
@@ -542,6 +545,7 @@ function TableOrderSession({
               statusError={statusError}
               onAdvanceStatus={advanceItemStatus}
               now={now}
+              isOwner={isOwner}
             />
           </div>
         </div>
@@ -580,6 +584,7 @@ function OrderPanel({
   statusError,
   onAdvanceStatus,
   now,
+  isOwner,
 }: {
   table: DiningTable;
   sale: SaleWithItems | null;
@@ -597,6 +602,7 @@ function OrderPanel({
   statusError: string | null;
   onAdvanceStatus: (saleItemId: string, newStatus: SaleItemStatus) => void;
   now: number;
+  isOwner: boolean;
 }) {
   const existingTotal = sale ? Number(sale.subtotal) : 0;
 
@@ -606,7 +612,7 @@ function OrderPanel({
         {sale && sale.sale_items.length > 0 && (
           <div className="mb-4">
             <p className="mb-2 text-xs font-semibold uppercase text-neutral-400">
-              สั่งไปแล้ว (แก้ไขได้ถ้ากดผิด)
+              สั่งไปแล้ว{isOwner ? " (แก้ไขได้ถ้ากดผิด)" : ""}
             </p>
             <ul className="space-y-2">
               {sale.sale_items.map((item) => {
@@ -633,31 +639,39 @@ function OrderPanel({
                         )}
                       </div>
                       <div className="flex items-center gap-1">
-                        <button
-                          disabled={busy}
-                          onClick={() => onEditItem(item.id, qty - 1)}
-                          className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-100 text-sm font-bold text-neutral-600 active:scale-95 disabled:opacity-40"
-                        >
-                          −
-                        </button>
-                        <span className="w-6 text-center text-sm font-semibold">
-                          {formatNumber(qty)}
-                        </span>
-                        <button
-                          disabled={busy}
-                          onClick={() => onEditItem(item.id, qty + 1)}
-                          className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-100 text-sm font-bold text-neutral-600 active:scale-95 disabled:opacity-40"
-                        >
-                          +
-                        </button>
-                        <button
-                          disabled={busy}
-                          onClick={() => onEditItem(item.id, 0)}
-                          className="ml-1 p-1 text-neutral-300 hover:text-red-500 disabled:opacity-40"
-                          aria-label="ลบรายการ"
-                        >
-                          <Trash2 className="h-4 w-4" strokeWidth={2} />
-                        </button>
+                        {isOwner ? (
+                          <>
+                            <button
+                              disabled={busy}
+                              onClick={() => onEditItem(item.id, qty - 1)}
+                              className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-100 text-sm font-bold text-neutral-600 active:scale-95 disabled:opacity-40"
+                            >
+                              −
+                            </button>
+                            <span className="w-6 text-center text-sm font-semibold">
+                              {formatNumber(qty)}
+                            </span>
+                            <button
+                              disabled={busy}
+                              onClick={() => onEditItem(item.id, qty + 1)}
+                              className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-100 text-sm font-bold text-neutral-600 active:scale-95 disabled:opacity-40"
+                            >
+                              +
+                            </button>
+                            <button
+                              disabled={busy}
+                              onClick={() => onEditItem(item.id, 0)}
+                              className="ml-1 p-1 text-neutral-300 hover:text-red-500 disabled:opacity-40"
+                              aria-label="ลบรายการ"
+                            >
+                              <Trash2 className="h-4 w-4" strokeWidth={2} />
+                            </button>
+                          </>
+                        ) : (
+                          <span className="w-8 text-center text-sm font-semibold text-neutral-600">
+                            × {formatNumber(qty)}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-2 border-t border-neutral-100 pt-2">

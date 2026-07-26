@@ -3,12 +3,15 @@ import webpush from "web-push";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type PushPayload = {
-  type: "order" | "bill" | "announcement";
+  type: "order" | "bill" | "announcement" | "order_edit";
   table_name?: string;
   product_name?: string;
   quantity?: number;
   note?: string | null;
   message?: string;
+  is_delete?: boolean;
+  old_quantity?: number;
+  new_quantity?: number;
 };
 
 function buildNotification(payload: PushPayload) {
@@ -25,6 +28,16 @@ function buildNotification(payload: PushPayload) {
       title: `เรียกเก็บเงิน • ${tableName}`,
       body: "ลูกค้าพร้อมจ่ายแล้ว",
       tag: "pos-bill",
+    };
+  }
+  if (payload.type === "order_edit") {
+    const productName = payload.product_name ?? "รายการ";
+    return {
+      title: `แก้ไขบิล • ${tableName}`,
+      body: payload.is_delete
+        ? `ลบ "${productName}" ออกจากบิล`
+        : `แก้จำนวน "${productName}" ${payload.old_quantity} → ${payload.new_quantity}`,
+      tag: "pos-order-edit",
     };
   }
   const itemLine = payload.quantity
