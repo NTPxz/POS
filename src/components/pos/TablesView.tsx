@@ -280,6 +280,8 @@ function TableOrderSession({
   const [panelOpen, setPanelOpen] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  const [resolveBusyId, setResolveBusyId] = useState<string | null>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
   const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [editingCustomerName, setEditingCustomerName] = useState(false);
@@ -357,13 +359,29 @@ function TableOrderSession({
   async function editExistingItem(saleItemId: string, newQuantity: number) {
     setEditingItemId(saleItemId);
     setEditError(null);
-    const { error } = await supabase.rpc("update_table_order_item", {
+    // เจ้าของร้าน = แก้ทันที, พนักงาน = ส่งคำขอเข้าคิวรออนุมัติ (backend ตัดสินใจเองตาม role)
+    const { error } = await supabase.rpc("request_edit_table_order_item", {
       p_sale_item_id: saleItemId,
       p_quantity: newQuantity,
     });
     setEditingItemId(null);
     if (error) {
       setEditError(`แก้ไขรายการไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    onChanged();
+  }
+
+  async function resolveEditRequest(requestId: string, approve: boolean) {
+    setResolveBusyId(requestId);
+    setResolveError(null);
+    const { error } = await supabase.rpc("resolve_order_edit_request", {
+      p_request_id: requestId,
+      p_approve: approve,
+    });
+    setResolveBusyId(null);
+    if (error) {
+      setResolveError(`ดำเนินการไม่สำเร็จ: ${error.message}`);
       return;
     }
     onChanged();
@@ -499,6 +517,9 @@ function TableOrderSession({
           onAdvanceStatus={advanceItemStatus}
           now={now}
           isOwner={isOwner}
+          resolveBusyId={resolveBusyId}
+          resolveError={resolveError}
+          onResolveRequest={resolveEditRequest}
         />
       </div>
 
@@ -546,6 +567,9 @@ function TableOrderSession({
               onAdvanceStatus={advanceItemStatus}
               now={now}
               isOwner={isOwner}
+              resolveBusyId={resolveBusyId}
+              resolveError={resolveError}
+              onResolveRequest={resolveEditRequest}
             />
           </div>
         </div>
@@ -585,6 +609,9 @@ function OrderPanel({
   onAdvanceStatus,
   now,
   isOwner,
+  resolveBusyId,
+  resolveError,
+  onResolveRequest,
 }: {
   table: DiningTable;
   sale: SaleWithItems | null;
@@ -603,6 +630,9 @@ function OrderPanel({
   onAdvanceStatus: (saleItemId: string, newStatus: SaleItemStatus) => void;
   now: number;
   isOwner: boolean;
+  resolveBusyId: string | null;
+  resolveError: string | null;
+  onResolveRequest: (requestId: string, approve: boolean) => void;
 }) {
   const existingTotal = sale ? Number(sale.subtotal) : 0;
 
@@ -612,13 +642,16 @@ function OrderPanel({
         {sale && sale.sale_items.length > 0 && (
           <div className="mb-4">
             <p className="mb-2 text-xs font-semibold uppercase text-neutral-400">
-              สั่งไปแล้ว{isOwner ? " (แก้ไขได้ถ้ากดผิด)" : ""}
+              สั่งไปแล้ว{isOwner ? " (แก้ไขได้ถ้ากดผิด)" : " (แก้ไข/ลบต้องรอเจ้าของร้านอนุมัติ)"}
             </p>
             <ul className="space-y-2">
               {sale.sale_items.map((item) => {
                 const qty = Number(item.quantity);
                 const busy = editingItemId === item.id;
                 const statusBusy = statusBusyId === item.id;
+                const pending = item.pending_edit_quantity;
+                const hasPending = pending !== null && pending !== undefined;
+                const requestBusy = resolveBusyId === item.pending_edit_request_id;
                 return (
                   <li
                     key={item.id}
@@ -639,7 +672,11 @@ function OrderPanel({
                         )}
                       </div>
                       <div className="flex items-center gap-1">
-                        {isOwner ? (
+                        {hasPending ? (
+                          <span className="w-8 text-center text-sm font-semibold text-neutral-400">
+                            × {formatNumber(qty)}
+                          </span>
+                        ) : (
                           <>
                             <button
                               disabled={busy}
@@ -667,13 +704,37 @@ function OrderPanel({
                               <Trash2 className="h-4 w-4" strokeWidth={2} />
                             </button>
                           </>
-                        ) : (
-                          <span className="w-8 text-center text-sm font-semibold text-neutral-600">
-                            × {formatNumber(qty)}
-                          </span>
                         )}
                       </div>
                     </div>
+                    {hasPending && item.pending_edit_request_id && (
+                      <div className="mt-2 rounded-lg bg-purple-50 p-2 text-xs text-purple-700">
+                        <p className="font-medium">
+                          รออนุมัติ:{" "}
+                          {pending <= 0
+                            ? "ขอลบรายการนี้ออกจากบิล"
+                            : `ขอแก้จำนวนเป็น ${formatNumber(pending)}`}
+                        </p>
+                        <div className="mt-1.5 flex gap-2">
+                          {isOwner && (
+                            <button
+                              disabled={requestBusy}
+                              onClick={() => onResolveRequest(item.pending_edit_request_id!, true)}
+                              className="rounded-lg bg-purple-600 px-2.5 py-1 font-semibold text-white active:scale-95 disabled:opacity-40"
+                            >
+                              อนุมัติ
+                            </button>
+                          )}
+                          <button
+                            disabled={requestBusy}
+                            onClick={() => onResolveRequest(item.pending_edit_request_id!, false)}
+                            className="rounded-lg border border-purple-300 px-2.5 py-1 font-semibold text-purple-700 active:scale-95 disabled:opacity-40"
+                          >
+                            {isOwner ? "ปฏิเสธ" : "ยกเลิกคำขอ"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <div className="mt-2 flex items-center justify-between gap-2 border-t border-neutral-100 pt-2">
                       <span className="flex items-center gap-1.5">
                         <span
@@ -720,6 +781,11 @@ function OrderPanel({
             {statusError && (
               <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">
                 {statusError}
+              </p>
+            )}
+            {resolveError && (
+              <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">
+                {resolveError}
               </p>
             )}
           </div>

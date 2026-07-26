@@ -31,6 +31,14 @@ export const ANNOUNCEMENT_NOTES: ChimeNote[] = [
   { freq: 783.99, dur: 0.2 }, // G5
   { freq: 987.77, dur: 0.45 }, // B5 (โน้ตยาวปิดท้าย)
 ];
+// ทำนองขออนุมัติแก้ไข/ลบบิล — เสียงสั่น/เตือนชัดเจน แยกจากทุกทำนองข้างต้น (เจ้าของร้านเท่านั้นที่ได้ยิน)
+export const EDIT_REQUEST_NOTES: ChimeNote[] = [
+  { freq: 987.77, dur: 0.16 }, // B5
+  { freq: 830.61, dur: 0.16 }, // Ab5
+  { freq: 987.77, dur: 0.16 }, // B5
+  { freq: 830.61, dur: 0.16 }, // Ab5
+  { freq: 1174.66, dur: 0.4 }, // D6 (โน้ตยาวปิดท้าย)
+];
 
 type PlayOptions = {
   repeats?: number;

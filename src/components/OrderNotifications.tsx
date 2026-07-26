@@ -1,16 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Bell, Receipt, X } from "lucide-react";
+import { AlertTriangle, Bell, Pencil, Receipt, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/components/ProfileProvider";
 import { useTableAlert } from "@/components/TableAlertProvider";
 import { PENDING_ORDER_REMINDER_MS } from "@/lib/constants";
-import { BILL_NOTES, ORDER_NOTES, useChime } from "@/lib/chime";
+import { hasRole } from "@/lib/types";
+import { BILL_NOTES, EDIT_REQUEST_NOTES, ORDER_NOTES, useChime } from "@/lib/chime";
 
 type Toast = {
   id: string;
-  tone: "order" | "bill" | "reminder";
+  tone: "order" | "bill" | "reminder" | "edit_request";
   title: string;
   message: string;
   /** โต๊ะที่เกี่ยวข้องเจาะจง กดแล้วเปิดโต๊ะนั้นตรงๆ ได้เลย (reminder อาจมีหลายโต๊ะเลยไม่มีค่านี้) */
@@ -42,8 +43,10 @@ export default function OrderNotifications() {
   const notifiedBillRef = useRef<Set<string>>(new Set());
 
   const playChime = useCallback(
-    (tone: "order" | "bill" | "reminder") => {
-      playMelody(tone === "order" ? ORDER_NOTES : BILL_NOTES);
+    (tone: "order" | "bill" | "reminder" | "edit_request") => {
+      const notes =
+        tone === "order" ? ORDER_NOTES : tone === "edit_request" ? EDIT_REQUEST_NOTES : BILL_NOTES;
+      playMelody(notes);
     },
     [playMelody]
   );
@@ -192,6 +195,43 @@ export default function OrderNotifications() {
     };
   }, [profile, supabase, flushOrder, playChime, pushToast, resolveTable]);
 
+  // คำขอแก้ไข/ลบรายการจากพนักงาน — เจ้าของร้านเท่านั้นที่เห็น (RLS ของ order_edit_requests ก็กันไว้อีกชั้น)
+  useEffect(() => {
+    if (!profile || !hasRole(profile.role, "owner")) return;
+
+    const channel = supabase
+      .channel("owner-order-edit-requests")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "order_edit_requests" },
+        async (payload) => {
+          const row = payload.new as {
+            sale_id: string;
+            product_name: string;
+            old_quantity: number;
+            new_quantity: number;
+          };
+          const table = await resolveTable(row.sale_id);
+          const isDelete = Number(row.new_quantity) <= 0;
+          pushToast({
+            id: `edit-request-${Date.now()}`,
+            tone: "edit_request",
+            title: `พนักงานขออนุมัติแก้บิล • ${table.name}`,
+            message: isDelete
+              ? `ขอลบ "${row.product_name}" ออกจากบิล`
+              : `ขอแก้จำนวน "${row.product_name}" ${row.old_quantity} → ${row.new_quantity}`,
+            tableId: table.id,
+          });
+          playChime("edit_request");
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [profile, supabase, playChime, pushToast, resolveTable]);
+
   if (!profile) return null;
 
   return (
@@ -204,7 +244,9 @@ export default function OrderNotifications() {
               ? "border-red-300 bg-red-50/95"
               : t.tone === "bill"
                 ? "border-amber-300 bg-amber-50/95"
-                : "border-brand-300 bg-white/95"
+                : t.tone === "edit_request"
+                  ? "border-purple-300 bg-purple-50/95"
+                  : "border-brand-300 bg-white/95"
           }`}
         >
           <div
@@ -213,13 +255,17 @@ export default function OrderNotifications() {
                 ? "bg-red-600 text-white"
                 : t.tone === "bill"
                   ? "bg-amber-500 text-white"
-                  : "bg-brand-600 text-white"
+                  : t.tone === "edit_request"
+                    ? "bg-purple-600 text-white"
+                    : "bg-brand-600 text-white"
             }`}
           >
             {t.tone === "reminder" ? (
               <AlertTriangle className="h-4 w-4" strokeWidth={2} />
             ) : t.tone === "bill" ? (
               <Receipt className="h-4 w-4" strokeWidth={2} />
+            ) : t.tone === "edit_request" ? (
+              <Pencil className="h-4 w-4" strokeWidth={2} />
             ) : (
               <Bell className="h-4 w-4" strokeWidth={2} />
             )}
@@ -237,7 +283,9 @@ export default function OrderNotifications() {
                   ? "text-red-800"
                   : t.tone === "bill"
                     ? "text-amber-800"
-                    : "text-neutral-800"
+                    : t.tone === "edit_request"
+                      ? "text-purple-800"
+                      : "text-neutral-800"
               }`}
             >
               {t.title}

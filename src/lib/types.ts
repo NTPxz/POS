@@ -66,6 +66,8 @@ export type SaleItem = {
   ordered_by: "staff" | "customer";
   status: SaleItemStatus;
   note: string | null;
+  pending_edit_quantity: number | null;
+  pending_edit_request_id: string | null;
   created_at: string;
 };
 

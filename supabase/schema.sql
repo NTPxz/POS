@@ -631,58 +631,74 @@ begin
 end;
 $$;
 
--- แก้ไข/ลบรายการที่สั่งไปแล้วในบิลที่ยังเปิดอยู่ (กันกดผิด) — quantity <= 0 หรือ null = ลบรายการ
-create or replace function public.update_table_order_item(
-  p_sale_item_id uuid,
-  p_quantity numeric
-) returns void
+-- คำขอแก้ไข/ลบรายการที่สั่งไปแล้ว — พนักงานส่งคำขอ เจ้าของร้านอนุมัติ/ปฏิเสธเท่านั้น
+-- (เจ้าของร้านเองยังแก้ไขได้ทันทีโดยไม่ต้องผ่านคิว)
+create table if not exists public.order_edit_requests (
+  id uuid primary key default gen_random_uuid(),
+  sale_item_id uuid not null references public.sale_items (id) on delete cascade,
+  sale_id uuid not null references public.sales (id) on delete cascade,
+  table_id uuid references public.dining_tables (id),
+  product_name text not null,
+  old_quantity numeric not null,
+  new_quantity numeric not null,
+  requested_by uuid references auth.users (id),
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  reviewed_by uuid references auth.users (id),
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_order_edit_requests_status on public.order_edit_requests (status);
+create index if not exists idx_order_edit_requests_sale_item on public.order_edit_requests (sale_item_id);
+
+alter table public.order_edit_requests enable row level security;
+
+drop policy if exists "owner full access" on public.order_edit_requests;
+create policy "owner full access" on public.order_edit_requests
+  for all to authenticated using (public.is_owner()) with check (public.is_owner());
+
+alter publication supabase_realtime add table public.order_edit_requests;
+
+alter table public.sale_items add column if not exists pending_edit_quantity numeric;
+alter table public.sale_items add column if not exists pending_edit_request_id uuid references public.order_edit_requests (id) on delete set null;
+
+-- แกนกลางการแก้ไขจริง (ปรับสต๊อก/ยอดบิล/โปรโมชั่น) — เรียกใช้ภายในเท่านั้น ไม่เช็คสิทธิ์เอง
+-- ผู้เรียก (update_table_order_item / resolve_order_edit_request) ต้องเช็คสิทธิ์ก่อนเสมอ
+create or replace function public.apply_table_order_item_edit(p_sale_item_id uuid, p_quantity numeric)
+returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
   v_item sale_items%rowtype;
-  v_sale_status text;
-  v_sale_number bigint;
-  v_table_name text;
   v_old_line_total numeric;
   v_old_line_cost numeric;
   v_new_line_total numeric := 0;
   v_new_line_cost numeric := 0;
   v_qty_delta numeric;
-  v_desc text;
   v_promo_discount numeric;
-  v_is_delete boolean;
 begin
-  if not public.is_owner() then
-    raise exception 'แก้ไข/ลบรายการที่สั่งไปแล้วได้เฉพาะเจ้าของร้านเท่านั้น';
-  end if;
-
   select * into v_item from sale_items where id = p_sale_item_id for update;
   if not found then
     raise exception 'ไม่พบรายการนี้';
   end if;
 
-  select s.status, s.sale_number, t.name into v_sale_status, v_sale_number, v_table_name
-    from sales s left join dining_tables t on t.id = s.table_id
-    where s.id = v_item.sale_id;
-  if v_sale_status is distinct from 'open' then
-    raise exception 'แก้ไขได้เฉพาะบิลที่ยังเปิดอยู่เท่านั้น';
-  end if;
-
   v_old_line_total := v_item.total;
   v_old_line_cost := v_item.cost * v_item.quantity;
   v_qty_delta := coalesce(p_quantity, 0) - v_item.quantity;
-  v_is_delete := p_quantity is null or p_quantity <= 0;
 
-  if v_is_delete then
+  if p_quantity is null or p_quantity <= 0 then
     delete from sale_items where id = p_sale_item_id;
-    v_desc := format('ลบ "%s" ออกจากบิล #%s ของ%s', v_item.product_name, v_sale_number, coalesce(v_table_name, 'โต๊ะ'));
   else
     v_new_line_total := v_item.price * p_quantity;
     v_new_line_cost := v_item.cost * p_quantity;
-    update sale_items set quantity = p_quantity, total = v_new_line_total where id = p_sale_item_id;
-    v_desc := format('แก้ไข "%s" ในบิล #%s ของ%s จำนวน %s → %s', v_item.product_name, v_sale_number, coalesce(v_table_name, 'โต๊ะ'), v_item.quantity, p_quantity);
+    update sale_items set
+      quantity = p_quantity,
+      total = v_new_line_total,
+      pending_edit_quantity = null,
+      pending_edit_request_id = null
+      where id = p_sale_item_id;
   end if;
 
   if v_item.product_id is not null then
@@ -700,6 +716,57 @@ begin
     discount = v_promo_discount,
     total = greatest(subtotal - v_promo_discount, 0)
     where id = v_item.sale_id;
+end;
+$$;
+
+revoke execute on function public.apply_table_order_item_edit from public, anon, authenticated;
+
+-- แก้ไข/ลบรายการทันที — เฉพาะเจ้าของร้านเท่านั้น (ไม่ต้องผ่านคิวอนุมัติ) — quantity <= 0 หรือ null = ลบรายการ
+create or replace function public.update_table_order_item(
+  p_sale_item_id uuid,
+  p_quantity numeric
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_item sale_items%rowtype;
+  v_sale_status text;
+  v_sale_number bigint;
+  v_table_name text;
+  v_desc text;
+  v_is_delete boolean;
+begin
+  if not public.is_owner() then
+    raise exception 'แก้ไข/ลบรายการที่สั่งไปแล้วได้เฉพาะเจ้าของร้านเท่านั้น';
+  end if;
+
+  select * into v_item from sale_items where id = p_sale_item_id;
+  if not found then
+    raise exception 'ไม่พบรายการนี้';
+  end if;
+
+  select s.status, s.sale_number, t.name into v_sale_status, v_sale_number, v_table_name
+    from sales s left join dining_tables t on t.id = s.table_id
+    where s.id = v_item.sale_id;
+  if v_sale_status is distinct from 'open' then
+    raise exception 'แก้ไขได้เฉพาะบิลที่ยังเปิดอยู่เท่านั้น';
+  end if;
+
+  v_is_delete := p_quantity is null or p_quantity <= 0;
+
+  -- ถ้ามีคำขอค้างของรายการนี้ ถือว่าเจ้าของร้านจัดการเองแล้ว ปิดคำขอไปด้วย
+  update order_edit_requests set status = 'approved', reviewed_by = auth.uid(), reviewed_at = now()
+    where sale_item_id = p_sale_item_id and status = 'pending';
+
+  perform public.apply_table_order_item_edit(p_sale_item_id, p_quantity);
+
+  if v_is_delete then
+    v_desc := format('ลบ "%s" ออกจากบิล #%s ของ%s', v_item.product_name, v_sale_number, coalesce(v_table_name, 'โต๊ะ'));
+  else
+    v_desc := format('แก้ไข "%s" ในบิล #%s ของ%s จำนวน %s → %s', v_item.product_name, v_sale_number, coalesce(v_table_name, 'โต๊ะ'), v_item.quantity, p_quantity);
+  end if;
 
   perform public.log_action('edit_item', 'sale_items', p_sale_item_id::text, v_desc);
 
@@ -714,12 +781,132 @@ begin
 end;
 $$;
 
+-- จุดเรียกเดียวสำหรับปุ่ม +/-/ลบ ทั้งฝั่งพนักงานและเจ้าของร้าน:
+-- เจ้าของร้าน = แก้ทันที, พนักงาน = ส่งคำขอเข้าคิวรออนุมัติ
+create or replace function public.request_edit_table_order_item(
+  p_sale_item_id uuid,
+  p_quantity numeric
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_item sale_items%rowtype;
+  v_sale_status text;
+  v_sale_number bigint;
+  v_table_id uuid;
+  v_table_name text;
+  v_request_id uuid;
+  v_desc text;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select * into v_item from sale_items where id = p_sale_item_id;
+  if not found then
+    raise exception 'ไม่พบรายการนี้';
+  end if;
+
+  select s.status, s.sale_number, s.table_id, t.name into v_sale_status, v_sale_number, v_table_id, v_table_name
+    from sales s left join dining_tables t on t.id = s.table_id
+    where s.id = v_item.sale_id;
+  if v_sale_status is distinct from 'open' then
+    raise exception 'แก้ไขได้เฉพาะบิลที่ยังเปิดอยู่เท่านั้น';
+  end if;
+
+  if public.is_owner() then
+    perform public.update_table_order_item(p_sale_item_id, p_quantity);
+    return null;
+  end if;
+
+  -- ยกเลิกคำขอเดิมที่ยังค้างของรายการเดียวกัน กันซ้อนกันหลายคำขอ
+  update order_edit_requests set status = 'rejected', reviewed_at = now()
+    where sale_item_id = p_sale_item_id and status = 'pending';
+
+  insert into order_edit_requests (sale_item_id, sale_id, table_id, product_name, old_quantity, new_quantity, requested_by)
+  values (p_sale_item_id, v_item.sale_id, v_table_id, v_item.product_name, v_item.quantity, coalesce(p_quantity, 0), auth.uid())
+  returning id into v_request_id;
+
+  update sale_items set pending_edit_quantity = coalesce(p_quantity, 0), pending_edit_request_id = v_request_id
+    where id = p_sale_item_id;
+
+  if p_quantity is null or p_quantity <= 0 then
+    v_desc := format('ขออนุมัติลบ "%s" ออกจากบิล #%s ของ%s', v_item.product_name, v_sale_number, coalesce(v_table_name, 'โต๊ะ'));
+  else
+    v_desc := format('ขออนุมัติแก้ไข "%s" ในบิล #%s ของ%s จำนวน %s → %s', v_item.product_name, v_sale_number, coalesce(v_table_name, 'โต๊ะ'), v_item.quantity, p_quantity);
+  end if;
+  perform public.log_action('request_edit_item', 'sale_items', p_sale_item_id::text, v_desc);
+
+  perform public.trigger_push_notify(jsonb_build_object(
+    'type', 'order_edit_request',
+    'table_name', coalesce(v_table_name, 'โต๊ะ'),
+    'product_name', v_item.product_name,
+    'is_delete', coalesce(p_quantity, 0) <= 0,
+    'old_quantity', v_item.quantity,
+    'new_quantity', coalesce(p_quantity, 0)
+  ));
+
+  return v_request_id;
+end;
+$$;
+
+-- เจ้าของร้านอนุมัติ/ปฏิเสธ หรือพนักงานเจ้าของคำขอยกเลิกคำขอตัวเอง
+create or replace function public.resolve_order_edit_request(p_request_id uuid, p_approve boolean)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_req order_edit_requests%rowtype;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select * into v_req from order_edit_requests where id = p_request_id for update;
+  if not found then
+    raise exception 'ไม่พบคำขอนี้';
+  end if;
+  if v_req.status <> 'pending' then
+    raise exception 'คำขอนี้ถูกจัดการไปแล้ว';
+  end if;
+
+  if p_approve then
+    if not public.is_owner() then
+      raise exception 'อนุมัติได้เฉพาะเจ้าของร้านเท่านั้น';
+    end if;
+    perform public.apply_table_order_item_edit(v_req.sale_item_id, v_req.new_quantity);
+    update order_edit_requests set status = 'approved', reviewed_by = auth.uid(), reviewed_at = now()
+      where id = p_request_id;
+    perform public.log_action('approve_edit_request', 'order_edit_requests', p_request_id::text,
+      format('อนุมัติแก้ไข "%s" จำนวน %s → %s', v_req.product_name, v_req.old_quantity, v_req.new_quantity));
+  else
+    if not (public.is_owner() or auth.uid() = v_req.requested_by) then
+      raise exception 'ยกเลิกคำขอนี้ได้เฉพาะเจ้าของร้านหรือผู้ที่ขอเท่านั้น';
+    end if;
+    update sale_items set pending_edit_quantity = null, pending_edit_request_id = null
+      where id = v_req.sale_item_id;
+    update order_edit_requests set status = 'rejected', reviewed_by = auth.uid(), reviewed_at = now()
+      where id = p_request_id;
+    perform public.log_action('reject_edit_request', 'order_edit_requests', p_request_id::text,
+      format('ปฏิเสธ/ยกเลิกคำขอแก้ไข "%s"', v_req.product_name));
+  end if;
+end;
+$$;
+
 revoke execute on function public.add_order_to_table from public, anon;
 revoke execute on function public.checkout_table from public, anon;
 revoke execute on function public.update_table_order_item from public, anon;
+revoke execute on function public.request_edit_table_order_item from public, anon;
+revoke execute on function public.resolve_order_edit_request from public, anon;
 grant execute on function public.add_order_to_table to authenticated;
 grant execute on function public.checkout_table to authenticated;
 grant execute on function public.update_table_order_item to authenticated;
+grant execute on function public.request_edit_table_order_item to authenticated;
+grant execute on function public.resolve_order_edit_request to authenticated;
 
 -- ติดตามสถานะครัว: รับออเดอร์ -> เสิร์ฟแล้ว ต่อรายการ (staff เท่านั้น ลูกค้าห้ามปิดออเดอร์ตัวเอง)
 create or replace function public.update_sale_item_status(
