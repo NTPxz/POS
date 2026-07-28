@@ -261,3 +261,13 @@ export type ShoppingListItem = {
   checked_at: string | null;
   created_at: string;
 };
+
+export type BusinessPlan = {
+  id: string;
+  title: string;
+  note: string | null;
+  is_done: boolean;
+  created_by: string | null;
+  created_at: string;
+  done_at: string | null;
+};

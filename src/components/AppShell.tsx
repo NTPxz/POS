@@ -7,6 +7,7 @@ import {
   Banknote,
   History,
   LayoutDashboard,
+  Lightbulb,
   LogOut,
   Megaphone,
   Package,
@@ -44,6 +45,7 @@ const NAV_ITEMS: {
   { href: "/staff", label: "พนักงาน", icon: Users, minRole: "owner" },
   { href: "/promotions", label: "โปรโมชั่น", icon: Percent, minRole: "owner" },
   { href: "/announcements", label: "ประกาศ", icon: Megaphone, minRole: "owner" },
+  { href: "/plans", label: "แผนพัฒนาร้าน", icon: Lightbulb, minRole: "owner" },
   { href: "/log", label: "Log", icon: History, minRole: "owner" },
 ];
 

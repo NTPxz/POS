@@ -1942,3 +1942,24 @@ begin
       add constraint products_stock_group_check check (stock_group in ('ingredient', 'supply', 'beverage'));
   end if;
 end $$;
+
+-- ============================================================
+-- แผนพัฒนาร้าน (ไอเดีย/สิ่งที่วางแผนจะทำ) เห็นได้เฉพาะเจ้าของร้านเท่านั้น
+-- ============================================================
+create table if not exists public.business_plans (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  note text,
+  is_done boolean not null default false,
+  created_by uuid references auth.users (id),
+  created_at timestamptz not null default now(),
+  done_at timestamptz
+);
+
+alter table public.business_plans enable row level security;
+
+drop policy if exists "owner full access" on public.business_plans;
+create policy "owner full access" on public.business_plans
+  for all to authenticated using (public.is_owner()) with check (public.is_owner());
+
+alter publication supabase_realtime add table public.business_plans;
