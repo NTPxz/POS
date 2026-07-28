@@ -107,6 +107,11 @@ export default function CustomerOrderPage({
   const roundTotal = round.reduce((s, i) => s + i.product.price * i.quantity, 0);
   const roundCount = round.reduce((s, i) => s + i.quantity, 0);
   const existingTotal = order ? Number(order.subtotal) : 0;
+  // ของหมดไม่ต้องโชว์ให้ลูกค้าเห็นเลย (ไม่ใช่แค่ป้าย "หมด") กันสั่งของที่ไม่มีจริง
+  const availableProducts = useMemo(
+    () => products.filter((p) => !(p.track_stock && p.stock <= 0)),
+    [products]
+  );
 
   function addToRound(product: Product) {
     setRound((prev) => {
@@ -274,7 +279,7 @@ export default function CustomerOrderPage({
 
       <div className="flex flex-1 flex-col pb-24">
         <ProductPicker
-          products={products}
+          products={availableProducts}
           categories={categories}
           onAdd={addToRound}
           hideStockCount
