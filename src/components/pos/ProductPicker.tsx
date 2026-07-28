@@ -9,10 +9,13 @@ export default function ProductPicker({
   products,
   categories,
   onAdd,
+  hideStockCount = false,
 }: {
   products: Product[];
   categories: Category[];
   onAdd: (product: Product) => void;
+  /** ซ่อนตัวเลขจำนวนคงเหลือ (ใช้ในหน้าที่ลูกค้าสแกนสั่งเอง) — ยังโชว์ "หมด" อยู่ถ้าของจริงหมด */
+  hideStockCount?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
@@ -82,7 +85,12 @@ export default function ProductPicker({
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {filtered.map((p) => (
-            <ProductCard key={p.id} product={p} onAdd={() => onAdd(p)} />
+            <ProductCard
+              key={p.id}
+              product={p}
+              onAdd={() => onAdd(p)}
+              hideStockCount={hideStockCount}
+            />
           ))}
         </div>
       )}
@@ -116,9 +124,11 @@ function CategoryChip({
 function ProductCard({
   product,
   onAdd,
+  hideStockCount = false,
 }: {
   product: Product;
   onAdd: () => void;
+  hideStockCount?: boolean;
 }) {
   const outOfStock = product.track_stock && product.stock <= 0;
   const lowStock =
@@ -149,7 +159,7 @@ function ProductCard({
           </div>
         )}
       </div>
-      {product.track_stock && (
+      {product.track_stock && (!hideStockCount || outOfStock) && (
         <span
           className={`absolute right-2 top-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
             outOfStock

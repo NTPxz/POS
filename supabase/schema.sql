@@ -1127,11 +1127,16 @@ end $$;
 
 -- เมนูสำหรับลูกค้า: view ที่ซ่อนต้นทุน (cost) ไว้ (แทนด้วย 0) โครงสร้าง
 -- คอลัมน์เหมือน products ทุกอย่างเพื่อให้ frontend ใช้ type Product เดียวกันได้
+-- ลูกค้าไม่เห็นต้นทุนหรือจำนวนสต๊อกจริง (ซ่อนที่ view เลย ไม่ใช่แค่ UI กันดึงข้อมูลตรงผ่าน REST API ได้)
+-- stock คงไว้แค่สถานะ "หมด/ไม่หมด" (0 = หมด, 999999 = ยังมี) ไม่บอกจำนวนจริง
 create or replace view public.public_menu as
 select
   id, name, barcode, category_id, price,
   0::numeric(12, 2) as cost,
-  stock, track_stock, low_stock_threshold, image_url, is_active, created_at, updated_at
+  case when stock <= 0 then 0::numeric(12, 2) else 999999::numeric(12, 2) end as stock,
+  track_stock,
+  0::numeric(12, 2) as low_stock_threshold,
+  image_url, is_active, created_at, updated_at
 from public.products
 where is_active = true and is_sold_out = false;
 

@@ -273,7 +273,12 @@ export default function CustomerOrderPage({
       )}
 
       <div className="flex flex-1 flex-col pb-24">
-        <ProductPicker products={products} categories={categories} onAdd={addToRound} />
+        <ProductPicker
+          products={products}
+          categories={categories}
+          onAdd={addToRound}
+          hideStockCount
+        />
       </div>
 
       {/* ปุ่มลอยดูออเดอร์ */}
