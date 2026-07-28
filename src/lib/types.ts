@@ -5,6 +5,14 @@ export type Category = {
   created_at: string;
 };
 
+export type StockGroup = "ingredient" | "supply" | "beverage";
+
+export const STOCK_GROUP_LABELS: Record<StockGroup, string> = {
+  ingredient: "วัตถุดิบ",
+  supply: "ของใช้",
+  beverage: "เครื่องดื่ม",
+};
+
 export type Product = {
   id: string;
   name: string;
@@ -15,6 +23,7 @@ export type Product = {
   stock: number;
   track_stock: boolean;
   low_stock_threshold: number;
+  stock_group: StockGroup | null;
   image_url: string | null;
   is_active: boolean;
   is_sold_out: boolean;

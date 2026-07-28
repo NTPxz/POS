@@ -1932,3 +1932,13 @@ alter publication supabase_realtime add table public.shopping_list_items;
 
 -- comment/หมายเหตุต่อรายการที่ลูกค้าพิมพ์ตอนสั่งผ่าน QR (เช่น ไม่ใส่ผัก, เผ็ดน้อย) พนักงานต้องเห็นตอนรับออเดอร์
 alter table public.sale_items add column if not exists note text;
+
+-- กลุ่มสต๊อกสำหรับหน้า "ภาพรวม stock" เท่านั้น แยกจากหมวดหมู่เมนู (categories) ที่ลูกค้าเห็นตอนสั่งอาหาร
+alter table public.products add column if not exists stock_group text;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'products_stock_group_check') then
+    alter table public.products
+      add constraint products_stock_group_check check (stock_group in ('ingredient', 'supply', 'beverage'));
+  end if;
+end $$;
