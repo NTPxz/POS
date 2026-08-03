@@ -699,16 +699,30 @@ function ProductModal({
                 </Field>
               )}
             </>
+          ) : form.track_stock ? (
+            <>
+              <Field label="จำนวนคงเหลือ (นับสต๊อก)">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  className="input"
+                  value={form.stock}
+                  onChange={(e) => set({ stock: e.target.value })}
+                />
+              </Field>
+              <p className="text-xs text-neutral-400">
+                แจ้งเตือนเมื่อต่ำกว่า {formatNumber(parseFloat(form.low_stock_threshold) || 0)}
+                {form.stock_group ? ` · กลุ่ม${STOCK_GROUP_LABELS[form.stock_group as StockGroup]}` : ""}
+                {" — เปลี่ยนค่านี้ได้เฉพาะเจ้าของร้าน"}
+              </p>
+            </>
           ) : (
             product && (
               <div className="rounded-xl bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
-                {form.track_stock
-                  ? `คงเหลือ ${formatNumber(parseFloat(form.stock) || 0)} ชิ้น (แจ้งเตือนเมื่อต่ำกว่า ${formatNumber(parseFloat(form.low_stock_threshold) || 0)})${
-                      form.stock_group ? ` · กลุ่ม${STOCK_GROUP_LABELS[form.stock_group as StockGroup]}` : ""
-                    }`
-                  : "ไม่ได้ตั้งค่านับสต๊อกสินค้านี้"}
+                ไม่ได้ตั้งค่านับสต๊อกสินค้านี้
                 <span className="mt-1 block text-xs text-neutral-400">
-                  แก้ไขจำนวนสต๊อกได้เฉพาะเจ้าของร้าน
+                  เปิดใช้งาน/ปรับตั้งค่าการนับสต๊อกได้เฉพาะเจ้าของร้าน
                 </span>
               </div>
             )
