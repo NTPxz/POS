@@ -699,7 +699,7 @@ function ProductModal({
                 </Field>
               )}
             </>
-          ) : form.track_stock ? (
+          ) : (
             <>
               <Field label="จำนวนคงเหลือ (นับสต๊อก)">
                 <input
@@ -712,20 +712,14 @@ function ProductModal({
                 />
               </Field>
               <p className="text-xs text-neutral-400">
-                แจ้งเตือนเมื่อต่ำกว่า {formatNumber(parseFloat(form.low_stock_threshold) || 0)}
-                {form.stock_group ? ` · กลุ่ม${STOCK_GROUP_LABELS[form.stock_group as StockGroup]}` : ""}
-                {" — เปลี่ยนค่านี้ได้เฉพาะเจ้าของร้าน"}
+                {form.track_stock
+                  ? `ตัดสต๊อกอัตโนมัติเมื่อขาย · แจ้งเตือนเมื่อต่ำกว่า ${formatNumber(parseFloat(form.low_stock_threshold) || 0)}${
+                      form.stock_group ? ` · กลุ่ม${STOCK_GROUP_LABELS[form.stock_group as StockGroup]}` : ""
+                    }`
+                  : "ยังไม่ได้เปิด \"นับสต๊อก\" (ตัดจำนวนอัตโนมัติเมื่อขาย) ไว้สำหรับสินค้านี้"}
+                {" — เปิด/ปิดค่านี้ได้เฉพาะเจ้าของร้าน"}
               </p>
             </>
-          ) : (
-            product && (
-              <div className="rounded-xl bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
-                ไม่ได้ตั้งค่านับสต๊อกสินค้านี้
-                <span className="mt-1 block text-xs text-neutral-400">
-                  เปิดใช้งาน/ปรับตั้งค่าการนับสต๊อกได้เฉพาะเจ้าของร้าน
-                </span>
-              </div>
-            )
           )}
 
           <Field label="รูปภาพสินค้า (ถ้ามี)">
