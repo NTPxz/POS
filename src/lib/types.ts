@@ -39,6 +39,7 @@ export type Sale = {
   id: string;
   sale_number: number;
   table_id: string | null;
+  queue_id: string | null;
   subtotal: number;
   discount: number;
   total: number;
@@ -81,11 +82,6 @@ export type SaleItem = {
 };
 
 export type SaleWithItems = Sale & { sale_items: SaleItem[] };
-
-export type CartItem = {
-  product: Product;
-  quantity: number;
-};
 
 export const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   cash: "เงินสด",
@@ -168,6 +164,13 @@ export type DiningTable = {
   name: string;
   position: number;
   is_active: boolean;
+  created_at: string;
+};
+
+export type QuickSaleQueue = {
+  id: string;
+  name: string;
+  position: number;
   created_at: string;
 };
 

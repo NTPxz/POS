@@ -1,14 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Minus, Plus, ShoppingCart, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Minus,
+  Pencil,
+  Plus,
+  RefreshCw,
+  ShoppingCart,
+  Trash2,
+  X,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { baht, formatNumber } from "@/lib/format";
-import { CartItem, Category, PaymentMethod, Product, Promotion } from "@/lib/types";
+import {
+  Category,
+  PaymentMethod,
+  Product,
+  QuickSaleQueue,
+  SaleItem,
+  SaleWithItems,
+} from "@/lib/types";
 import ProductPicker from "@/components/pos/ProductPicker";
 import PaymentFields from "@/components/pos/PaymentFields";
-
-const QUEUE_COUNT = 5;
 
 export default function QuickSaleView({
   products,
@@ -20,10 +35,11 @@ export default function QuickSaleView({
   onSaleDone: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
-  const [carts, setCarts] = useState<CartItem[][]>(() =>
-    Array.from({ length: QUEUE_COUNT }, () => [])
-  );
-  const [activeQueue, setActiveQueue] = useState(0);
+  const [queues, setQueues] = useState<QuickSaleQueue[]>([]);
+  const [openSales, setOpenSales] = useState<Map<string, SaleWithItems>>(new Map());
+  const [activeQueueId, setActiveQueueId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [salesRank, setSalesRank] = useState<Map<string, number>>(new Map());
@@ -32,6 +48,61 @@ export default function QuickSaleView({
     received: number | null;
     change: number | null;
   } | null>(null);
+
+  // โหลดคิว + บิล "open" ของแต่ละคิว — เก็บลง DB จริงกันตะกร้าหายตอนปิด/ปัดแอปออก
+  const loadQueues = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setLoadError(null);
+    try {
+      const [queuesRes, salesRes] = await Promise.all([
+        supabase.from("quick_sale_queues").select("*").order("position"),
+        supabase
+          .from("sales")
+          .select("*, sale_items(*)")
+          .eq("status", "open")
+          .not("queue_id", "is", null)
+          .order("created_at", { ascending: true, foreignTable: "sale_items" }),
+      ]);
+      if (queuesRes.error) throw queuesRes.error;
+      if (salesRes.error) throw salesRes.error;
+      const nextQueues = (queuesRes.data as QuickSaleQueue[]) ?? [];
+      setQueues(nextQueues);
+      const map = new Map<string, SaleWithItems>();
+      for (const s of (salesRes.data as SaleWithItems[]) ?? []) {
+        if (s.queue_id) map.set(s.queue_id, s);
+      }
+      setOpenSales(map);
+      setActiveQueueId((prev) =>
+        prev && nextQueues.some((q) => q.id === prev) ? prev : (nextQueues[0]?.id ?? null)
+      );
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ");
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    loadQueues();
+  }, [loadQueues]);
+
+  // เรียลไทม์: กันข้อมูลเพี้ยนถ้ามีคนแก้คิวเดียวกันจากอีกเครื่อง
+  useEffect(() => {
+    const channel = supabase
+      .channel("quick-sale-queues-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "sales" }, () =>
+        loadQueues(true)
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "quick_sale_queues" },
+        () => loadQueues(true)
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, loadQueues]);
 
   useEffect(() => {
     supabase
@@ -53,47 +124,77 @@ export default function QuickSaleView({
     );
   }, [products, salesRank]);
 
-  const cart = carts[activeQueue];
+  const activeSale = activeQueueId ? (openSales.get(activeQueueId) ?? null) : null;
+  const cartItems = useMemo(() => activeSale?.sale_items ?? [], [activeSale]);
   const cartQuantities = useMemo(() => {
     const map = new Map<string, number>();
-    for (const item of cart) map.set(item.product.id, item.quantity);
+    for (const item of cartItems) {
+      if (item.product_id) map.set(item.product_id, Number(item.quantity));
+    }
     return map;
-  }, [cart]);
-  const itemCount = cart.reduce((s, i) => s + i.quantity, 0);
-  const subtotal = cart.reduce((s, i) => s + i.product.price * i.quantity, 0);
+  }, [cartItems]);
+  const itemCount = cartItems.reduce((s, i) => s + Number(i.quantity), 0);
+  const subtotal = cartItems.reduce((s, i) => s + Number(i.total), 0);
 
-  function updateActiveCart(updater: (cart: CartItem[]) => CartItem[]) {
-    setCarts((prev) =>
-      prev.map((c, i) => (i === activeQueue ? updater(c) : c))
-    );
-  }
-
-  function addToCart(product: Product) {
-    updateActiveCart((prev) => {
-      const found = prev.find((i) => i.product.id === product.id);
-      if (found) {
-        return prev.map((i) =>
-          i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i
-        );
-      }
-      return [...prev, { product, quantity: 1 }];
+  async function addToCart(product: Product) {
+    if (!activeQueueId) return;
+    const { error } = await supabase.rpc("add_quick_sale_item", {
+      p_queue_id: activeQueueId,
+      p_product_id: product.id,
     });
+    if (error) {
+      window.alert(`เพิ่มสินค้าไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    loadQueues(true);
   }
 
-  function changeQty(productId: string, delta: number) {
-    updateActiveCart((prev) =>
-      prev
-        .map((i) =>
-          i.product.id === productId
-            ? { ...i, quantity: i.quantity + delta }
-            : i
-        )
-        .filter((i) => i.quantity > 0)
-    );
+  async function changeQty(item: SaleItem, delta: number) {
+    const { error } = await supabase.rpc("set_quick_sale_item_quantity", {
+      p_sale_item_id: item.id,
+      p_quantity: Number(item.quantity) + delta,
+    });
+    if (error) {
+      window.alert(`แก้ไขรายการไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    loadQueues(true);
   }
 
-  function removeItem(productId: string) {
-    updateActiveCart((prev) => prev.filter((i) => i.product.id !== productId));
+  async function removeItem(item: SaleItem) {
+    const { error } = await supabase.rpc("set_quick_sale_item_quantity", {
+      p_sale_item_id: item.id,
+      p_quantity: 0,
+    });
+    if (error) {
+      window.alert(`ลบรายการไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    loadQueues(true);
+  }
+
+  async function clearCart() {
+    if (!activeQueueId) return;
+    const { error } = await supabase.rpc("clear_quick_sale_queue", {
+      p_queue_id: activeQueueId,
+    });
+    if (error) {
+      window.alert(`ล้างตะกร้าไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    loadQueues(true);
+  }
+
+  async function renameQueue(queueId: string, name: string) {
+    const { error } = await supabase
+      .from("quick_sale_queues")
+      .update({ name })
+      .eq("id", queueId);
+    if (error) {
+      window.alert(`เปลี่ยนชื่อคิวไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    loadQueues(true);
   }
 
   function handleCheckoutDone(info: {
@@ -103,26 +204,56 @@ export default function QuickSaleView({
   }) {
     setCheckoutOpen(false);
     setCartOpen(false);
-    updateActiveCart(() => []);
     setSuccessInfo(info);
+    loadQueues(true);
     onSaleDone();
   }
 
   const cartPanel = (
     <CartPanel
-      cart={cart}
+      items={cartItems}
       subtotal={subtotal}
       onChangeQty={changeQty}
       onRemove={removeItem}
       onCheckout={() => setCheckoutOpen(true)}
-      onClear={() => updateActiveCart(() => [])}
+      onClear={clearCart}
     />
   );
+
+  if (loading) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <p className="text-neutral-400">กำลังโหลดคิว...</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center text-red-500">
+        <AlertCircle className="h-10 w-10" strokeWidth={1.5} />
+        <p className="text-sm">โหลดข้อมูลไม่สำเร็จ: {loadError}</p>
+        <button
+          className="btn-secondary inline-flex items-center gap-2"
+          onClick={() => loadQueues()}
+        >
+          <RefreshCw className="h-4 w-4" strokeWidth={2} />
+          ลองอีกครั้ง
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-1 flex-col lg:flex-row">
       <div className="flex flex-1 flex-col">
-        <QueueTabs carts={carts} activeQueue={activeQueue} onSelect={setActiveQueue} />
+        <QueueTabs
+          queues={queues}
+          openSales={openSales}
+          activeQueueId={activeQueueId}
+          onSelect={setActiveQueueId}
+          onRename={renameQueue}
+        />
         <ProductPicker
           products={sortedProducts}
           categories={categories}
@@ -171,10 +302,9 @@ export default function QuickSaleView({
         </div>
       )}
 
-      {checkoutOpen && (
+      {checkoutOpen && activeSale && (
         <CheckoutModal
-          cart={cart}
-          subtotal={subtotal}
+          sale={activeSale}
           onClose={() => setCheckoutOpen(false)}
           onDone={handleCheckoutDone}
         />
@@ -188,42 +318,85 @@ export default function QuickSaleView({
 }
 
 function QueueTabs({
-  carts,
-  activeQueue,
+  queues,
+  openSales,
+  activeQueueId,
   onSelect,
+  onRename,
 }: {
-  carts: CartItem[][];
-  activeQueue: number;
-  onSelect: (index: number) => void;
+  queues: QuickSaleQueue[];
+  openSales: Map<string, SaleWithItems>;
+  activeQueueId: string | null;
+  onSelect: (id: string) => void;
+  onRename: (id: string, name: string) => void;
 }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   return (
     <div className="no-scrollbar flex gap-2 overflow-x-auto border-b border-neutral-200 bg-white px-4 py-2.5">
-      {carts.map((cart, i) => {
-        const count = cart.reduce((s, item) => s + item.quantity, 0);
-        const active = i === activeQueue;
+      {queues.map((q) => {
+        const count = (openSales.get(q.id)?.sale_items ?? []).reduce(
+          (s, i) => s + Number(i.quantity),
+          0
+        );
+        const active = q.id === activeQueueId;
+        const editing = editingId === q.id;
+
+        if (editing) {
+          return (
+            <input
+              key={q.id}
+              autoFocus
+              defaultValue={q.name}
+              maxLength={30}
+              className="input w-28 shrink-0 py-2 text-sm"
+              onBlur={(e) => {
+                setEditingId(null);
+                const name = e.target.value.trim();
+                if (name && name !== q.name) onRename(q.id, name);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                if (e.key === "Escape") setEditingId(null);
+              }}
+            />
+          );
+        }
+
         return (
-          <button
-            key={i}
-            onClick={() => onSelect(i)}
-            className={`relative shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition ${
+          <div
+            key={q.id}
+            className={`relative flex shrink-0 items-center rounded-full transition ${
               active
                 ? "bg-brand-600 text-white"
                 : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
             }`}
           >
-            คิว {i + 1}
+            <button
+              onClick={() => onSelect(q.id)}
+              className="py-2 pl-4 pr-2 text-sm font-semibold"
+            >
+              {q.name}
+            </button>
+            {active && (
+              <button
+                onClick={() => setEditingId(q.id)}
+                className="mr-2 rounded-full p-1 hover:bg-white/20"
+                aria-label="แก้ไขชื่อคิว"
+              >
+                <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
+              </button>
+            )}
             {count > 0 && (
               <span
                 className={`absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-bold ${
-                  active
-                    ? "bg-white text-brand-700"
-                    : "bg-brand-600 text-white"
+                  active ? "bg-white text-brand-700" : "bg-brand-600 text-white"
                 }`}
               >
                 {formatNumber(count)}
               </span>
             )}
-          </button>
+          </div>
         );
       })}
     </div>
@@ -231,17 +404,17 @@ function QueueTabs({
 }
 
 function CartPanel({
-  cart,
+  items,
   subtotal,
   onChangeQty,
   onRemove,
   onCheckout,
   onClear,
 }: {
-  cart: CartItem[];
+  items: SaleItem[];
   subtotal: number;
-  onChangeQty: (productId: string, delta: number) => void;
-  onRemove: (productId: string) => void;
+  onChangeQty: (item: SaleItem, delta: number) => void;
+  onRemove: (item: SaleItem) => void;
   onCheckout: () => void;
   onClear: () => void;
 }) {
@@ -249,7 +422,7 @@ function CartPanel({
     <>
       <div className="hidden items-center justify-between px-5 pt-5 lg:flex">
         <h2 className="text-lg font-bold">ตะกร้าสินค้า</h2>
-        {cart.length > 0 && (
+        {items.length > 0 && (
           <button
             onClick={onClear}
             className="text-sm text-neutral-400 hover:text-red-500"
@@ -260,41 +433,41 @@ function CartPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
-        {cart.length === 0 ? (
+        {items.length === 0 ? (
           <div className="py-16 text-center text-neutral-400">
             <ShoppingCart className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
             <p className="text-sm">แตะสินค้าเพื่อเพิ่มลงตะกร้า</p>
           </div>
         ) : (
           <ul className="space-y-3">
-            {cart.map((item) => (
+            {items.map((item) => (
               <li
-                key={item.product.id}
+                key={item.id}
                 className="flex items-center gap-3 rounded-xl border border-neutral-200 p-3"
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">
-                    {item.product.name}
+                    {item.product_name}
                   </p>
                   <p className="text-sm text-neutral-500">
-                    {baht(item.product.price)} × {formatNumber(item.quantity)} ={" "}
+                    {baht(Number(item.price))} × {formatNumber(Number(item.quantity))} ={" "}
                     <span className="font-semibold text-neutral-700">
-                      {baht(item.product.price * item.quantity)}
+                      {baht(Number(item.total))}
                     </span>
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
-                  <QtyButton onClick={() => onChangeQty(item.product.id, -1)}>
+                  <QtyButton onClick={() => onChangeQty(item, -1)}>
                     <Minus className="h-4 w-4" strokeWidth={2.5} />
                   </QtyButton>
                   <span className="w-8 text-center font-semibold">
-                    {formatNumber(item.quantity)}
+                    {formatNumber(Number(item.quantity))}
                   </span>
-                  <QtyButton onClick={() => onChangeQty(item.product.id, 1)}>
+                  <QtyButton onClick={() => onChangeQty(item, 1)}>
                     <Plus className="h-4 w-4" strokeWidth={2.5} />
                   </QtyButton>
                   <button
-                    onClick={() => onRemove(item.product.id)}
+                    onClick={() => onRemove(item)}
                     className="ml-1 p-1 text-neutral-300 hover:text-red-500"
                     aria-label="ลบรายการ"
                   >
@@ -310,13 +483,13 @@ function CartPanel({
       <div className="border-t border-neutral-200 p-4">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-neutral-500">
-            รวม {formatNumber(cart.reduce((s, i) => s + i.quantity, 0))} ชิ้น
+            รวม {formatNumber(items.reduce((s, i) => s + Number(i.quantity), 0))} ชิ้น
           </span>
           <span className="text-2xl font-bold">{baht(subtotal)}</span>
         </div>
         <button
           className="btn-primary w-full py-3.5 text-lg"
-          disabled={cart.length === 0}
+          disabled={items.length === 0}
           onClick={onCheckout}
         >
           คิดเงิน
@@ -344,13 +517,11 @@ function QtyButton({
 }
 
 function CheckoutModal({
-  cart,
-  subtotal,
+  sale,
   onClose,
   onDone,
 }: {
-  cart: CartItem[];
-  subtotal: number;
+  sale: SaleWithItems;
   onClose: () => void;
   onDone: (info: {
     total: number;
@@ -360,45 +531,16 @@ function CheckoutModal({
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [method, setMethod] = useState<PaymentMethod>("cash");
-  const [discountStr, setDiscountStr] = useState("");
+  const [discountStr, setDiscountStr] = useState(() =>
+    Number(sale.discount) > 0 ? String(Number(sale.discount)) : ""
+  );
   const [receivedStr, setReceivedStr] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [promotions, setPromotions] = useState<
-    (Promotion & { promotion_products: { product_id: string }[] })[]
-  >([]);
 
-  useEffect(() => {
-    supabase
-      .from("promotions")
-      .select("*, promotion_products(product_id)")
-      .eq("is_active", true)
-      .then(({ data }) => {
-        setPromotions(
-          (data as (Promotion & { promotion_products: { product_id: string }[] })[]) ?? []
-        );
-      });
-  }, [supabase]);
-
-  const promoDiscount = useMemo(() => {
-    let sum = 0;
-    for (const promo of promotions) {
-      if (promo.type !== "buy_x_get_fixed_discount") continue;
-      if (!promo.threshold_qty || !promo.discount_amount) continue;
-      const scopedIds = new Set(promo.promotion_products.map((pp) => pp.product_id));
-      const qty = cart
-        .filter((i) => scopedIds.has(i.product.id))
-        .reduce((s, i) => s + i.quantity, 0);
-      if (qty > 0) {
-        sum += Math.floor(qty / promo.threshold_qty) * promo.discount_amount;
-      }
-    }
-    return sum;
-  }, [promotions, cart]);
-
-  const manualDiscount = Math.max(parseFloat(discountStr) || 0, 0);
-  const discount = manualDiscount + promoDiscount;
+  const subtotal = Number(sale.subtotal);
+  const discount = Math.max(parseFloat(discountStr) || 0, 0);
   const total = Math.max(subtotal - discount, 0);
   const received = parseFloat(receivedStr) || 0;
   const cashInsufficient = method === "cash" && received < total;
@@ -406,12 +548,9 @@ function CheckoutModal({
   async function confirm() {
     setSaving(true);
     setError(null);
-    const { error } = await supabase.rpc("create_sale", {
-      p_items: cart.map((i) => ({
-        product_id: i.product.id,
-        quantity: i.quantity,
-      })),
-      p_discount: manualDiscount,
+    const { error } = await supabase.rpc("checkout_quick_sale_queue", {
+      p_sale_id: sale.id,
+      p_discount: discount,
       p_payment_method: method,
       p_received: method === "cash" ? received : null,
       p_note: note.trim() || null,
@@ -443,18 +582,27 @@ function CheckoutModal({
 
         <div className="flex-1 space-y-5 overflow-y-auto px-6 py-4">
           <div className="rounded-2xl bg-neutral-50 p-4">
-            <div className="flex justify-between text-sm text-neutral-500">
-              <span>ยอดรวม ({cart.reduce((s, i) => s + i.quantity, 0)} ชิ้น)</span>
+            <ul className="mb-2 space-y-1 text-sm text-neutral-600">
+              {sale.sale_items.map((item) => (
+                <li key={item.id} className="flex justify-between">
+                  <span>
+                    {item.product_name} × {formatNumber(Number(item.quantity))}
+                  </span>
+                  <span>{baht(Number(item.total))}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="flex justify-between border-t border-neutral-200 pt-2 text-sm text-neutral-500">
+              <span>ยอดรวม</span>
               <span>{baht(subtotal)}</span>
             </div>
-            {promoDiscount > 0 && (
-              <div className="mt-2 flex justify-between text-sm text-green-600">
-                <span>ส่วนลดโปรโมชั่น (อัตโนมัติ)</span>
-                <span className="font-semibold">-{baht(promoDiscount)}</span>
-              </div>
-            )}
             <div className="mt-2 flex items-center justify-between gap-3">
-              <label className="text-sm text-neutral-500">ส่วนลดเพิ่มเติม (บาท)</label>
+              <label className="text-sm text-neutral-500">
+                ส่วนลด (บาท){" "}
+                {Number(sale.discount) > 0 && (
+                  <span className="text-xs text-green-600">(รวมโปรโมชั่นแล้ว แก้ได้)</span>
+                )}
+              </label>
               <input
                 type="number"
                 inputMode="decimal"

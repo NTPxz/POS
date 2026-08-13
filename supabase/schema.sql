@@ -225,101 +225,6 @@ create policy "authenticated full access" on public.sale_items
   for all to authenticated using (true) with check (true);
 
 -- ============================================================
--- ฟังก์ชันบันทึกการขาย: สร้างบิล + รายการ + ตัดสต๊อก ใน transaction เดียว
--- ============================================================
-create or replace function public.create_sale(
-  p_items jsonb,                       -- [{"product_id": "...", "quantity": 1}, ...]
-  p_discount numeric default 0,
-  p_payment_method text default 'cash',
-  p_received numeric default null,
-  p_note text default null
-) returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_sale_id uuid;
-  v_sale_number bigint;
-  v_subtotal numeric := 0;
-  v_cost_total numeric := 0;
-  v_total numeric;
-  v_item jsonb;
-  v_product products%rowtype;
-  v_qty numeric;
-  v_promo_discount numeric;
-  v_final_discount numeric;
-  v_final_total numeric;
-begin
-  if auth.uid() is null then
-    raise exception 'ต้องล็อกอินก่อนทำรายการขาย';
-  end if;
-  if p_items is null or jsonb_array_length(p_items) = 0 then
-    raise exception 'ไม่มีรายการสินค้าในบิล';
-  end if;
-
-  -- รอบแรก: ล็อกแถวสินค้าและคำนวณยอดรวม
-  for v_item in select * from jsonb_array_elements(p_items) loop
-    v_qty := (v_item ->> 'quantity')::numeric;
-    if v_qty is null or v_qty <= 0 then
-      raise exception 'จำนวนสินค้าไม่ถูกต้อง';
-    end if;
-    select * into v_product from products
-      where id = (v_item ->> 'product_id')::uuid
-      for update;
-    if not found then
-      raise exception 'ไม่พบสินค้า (id: %)', v_item ->> 'product_id';
-    end if;
-    v_subtotal := v_subtotal + v_product.price * v_qty;
-    v_cost_total := v_cost_total + v_product.cost * v_qty;
-  end loop;
-
-  v_total := greatest(v_subtotal - coalesce(p_discount, 0), 0);
-
-  insert into sales (subtotal, discount, total, cost_total, payment_method, received, change, note, user_id)
-  values (
-    v_subtotal,
-    coalesce(p_discount, 0),
-    v_total,
-    v_cost_total,
-    p_payment_method,
-    p_received,
-    case when p_received is not null then greatest(p_received - v_total, 0) end,
-    p_note,
-    auth.uid()
-  )
-  returning id, sale_number into v_sale_id, v_sale_number;
-
-  -- รอบสอง: บันทึกรายการและตัดสต๊อก
-  for v_item in select * from jsonb_array_elements(p_items) loop
-    v_qty := (v_item ->> 'quantity')::numeric;
-    select * into v_product from products where id = (v_item ->> 'product_id')::uuid;
-    insert into sale_items (sale_id, product_id, product_name, price, cost, quantity, total)
-    values (v_sale_id, v_product.id, v_product.name, v_product.price, v_product.cost, v_qty, v_product.price * v_qty);
-    if v_product.track_stock then
-      update products set stock = stock - v_qty, updated_at = now() where id = v_product.id;
-    end if;
-  end loop;
-
-  -- ผูกโปรโมชั่นเข้ากับขายด่วนด้วย (เดิมมีแค่โหมดเปิดโต๊ะ) รวมกับส่วนลดที่พนักงานกรอกเอง
-  v_promo_discount := public.calculate_promo_discount(v_sale_id);
-  v_final_discount := coalesce(p_discount, 0) + v_promo_discount;
-  v_final_total := greatest(v_subtotal - v_final_discount, 0);
-
-  update sales set
-    discount = v_final_discount,
-    total = v_final_total,
-    change = case when p_received is not null then greatest(p_received - v_final_total, 0) end
-    where id = v_sale_id;
-
-  perform public.log_action('checkout', 'sales', v_sale_id::text,
-    format('ขายสินค้า (ขายด่วน) บิล #%s ยอด %s บาท (%s)', v_sale_number, v_final_total, p_payment_method));
-
-  return v_sale_id;
-end;
-$$;
-
--- ============================================================
 -- ฟังก์ชันยกเลิกบิล: เปลี่ยนสถานะเป็น voided และคืนสต๊อก (พนักงานทุกคนทำได้)
 -- รองรับทั้งบิล "open" (ยกเลิกทั้งโต๊ะ) และ "completed"
 -- ============================================================
@@ -356,9 +261,7 @@ begin
 end;
 $$;
 
-revoke execute on function public.create_sale from public, anon;
 revoke execute on function public.void_sale from public, anon;
-grant execute on function public.create_sale to authenticated;
 grant execute on function public.void_sale to authenticated;
 
 -- ============================================================
@@ -984,7 +887,7 @@ create policy "owner reads log" on public.activity_log
   for select to authenticated using (public.is_owner());
 -- ไม่มี policy insert/update/delete ให้ authenticated — เขียนได้ผ่าน security definer function เท่านั้น
 
--- helper สำหรับบันทึก log จากฟังก์ชันอื่น (create_sale, void_sale, add_order_to_table, checkout_table, update_table_order_item)
+-- helper สำหรับบันทึก log จากฟังก์ชันอื่น (void_sale, add_order_to_table, checkout_table, update_table_order_item, checkout_quick_sale_queue)
 create or replace function public.log_action(
   p_action text,
   p_table text,
@@ -1059,6 +962,7 @@ begin
       when 'DELETE' then format('ลบโต๊ะ "%s"', v_old->>'name')
       else format('แก้ไขโต๊ะ "%s"', v_new->>'name')
     end
+    when 'quick_sale_queues' then format('แก้ไขชื่อคิวขายด่วนเป็น "%s"', v_new->>'name')
     when 'profiles' then case TG_OP
       when 'UPDATE' then format('แก้ไขข้อมูลพนักงาน %s (role: %s)', coalesce(v_new->>'email', v_new->>'phone'), v_new->>'role')
       else format('บัญชีพนักงานใหม่ %s', coalesce(v_new->>'email', v_new->>'phone'))
@@ -1985,3 +1889,251 @@ $$;
 
 revoke execute on function public.get_product_sales_counts from public, anon;
 grant execute on function public.get_product_sales_counts to authenticated;
+
+-- ============================================================
+-- คิวขายด่วน: ตั้งชื่อได้ และตะกร้าแต่ละคิวบันทึกลง DB ทันทีที่กดเมนู (ไม่หายแม้ปิด/ปัดแอปออก)
+-- ============================================================
+create table if not exists public.quick_sale_queues (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  position int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+alter table public.quick_sale_queues enable row level security;
+
+drop policy if exists "select queues" on public.quick_sale_queues;
+create policy "select queues" on public.quick_sale_queues
+  for select to authenticated using (true);
+drop policy if exists "rename queues" on public.quick_sale_queues;
+create policy "rename queues" on public.quick_sale_queues
+  for update to authenticated using (true) with check (true);
+
+insert into public.quick_sale_queues (name, position)
+select 'คิว ' || n, n
+from generate_series(1, 5) as n
+where not exists (select 1 from public.quick_sale_queues);
+
+drop trigger if exists log_quick_sale_queues on public.quick_sale_queues;
+create trigger log_quick_sale_queues after update on public.quick_sale_queues
+  for each row execute function public.log_activity();
+
+-- บิลขายด่วนผูกกับคิวได้ (null = ไม่ได้มาจากคิว เช่นทางลัดเก่า) และมีสถานะ "open" ระหว่างที่ยังหยิบของอยู่
+alter table public.sales add column if not exists queue_id uuid references public.quick_sale_queues (id) on delete set null;
+create index if not exists idx_sales_queue_open on public.sales (queue_id) where status = 'open';
+
+-- แตะเมนู = บันทึกลง DB ทันที: สร้างบิล "open" ของคิวนั้นถ้ายังไม่มี แล้ว merge เข้ารายการเดิมถ้าสินค้าซ้ำ
+create or replace function public.add_quick_sale_item(p_queue_id uuid, p_product_id uuid)
+returns table(sale_id uuid, sale_item_id uuid, quantity numeric)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_sale_id uuid;
+  v_product products%rowtype;
+  v_item_id uuid;
+  v_new_qty numeric;
+  v_promo_discount numeric;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select * into v_product from products where id = p_product_id for update;
+  if not found then
+    raise exception 'ไม่พบสินค้า';
+  end if;
+
+  select id into v_sale_id from sales
+    where queue_id = p_queue_id and status = 'open'
+    limit 1;
+
+  if v_sale_id is null then
+    insert into sales (queue_id, subtotal, total, cost_total, payment_method, status, user_id)
+    values (p_queue_id, 0, 0, 0, 'cash', 'open', auth.uid())
+    returning id into v_sale_id;
+  end if;
+
+  select id, sale_items.quantity into v_item_id, v_new_qty from sale_items
+    where sale_items.sale_id = v_sale_id and product_id = p_product_id
+    limit 1;
+
+  if v_item_id is null then
+    v_new_qty := 1;
+    insert into sale_items (sale_id, product_id, product_name, price, cost, quantity, total)
+    values (v_sale_id, v_product.id, v_product.name, v_product.price, v_product.cost, 1, v_product.price)
+    returning id into v_item_id;
+  else
+    v_new_qty := v_new_qty + 1;
+    update sale_items set quantity = v_new_qty, total = v_new_qty * price where id = v_item_id;
+  end if;
+
+  if v_product.track_stock then
+    update products set stock = stock - 1, updated_at = now() where id = v_product.id;
+  end if;
+
+  update sales set
+    subtotal = subtotal + v_product.price,
+    cost_total = cost_total + v_product.cost
+    where id = v_sale_id;
+
+  v_promo_discount := public.calculate_promo_discount(v_sale_id);
+  update sales set
+    discount = v_promo_discount,
+    total = greatest(subtotal - v_promo_discount, 0)
+    where id = v_sale_id;
+
+  return query select v_sale_id, v_item_id, v_new_qty;
+end;
+$$;
+
+-- ปรับจำนวน/ลบรายการในตะกร้าคิวขายด่วน (ปุ่ม +/-/ลบ ในแผงตะกร้า) — 0 หรือต่ำกว่า = ลบรายการทิ้ง
+create or replace function public.set_quick_sale_item_quantity(p_sale_item_id uuid, p_quantity numeric)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_item sale_items%rowtype;
+  v_sale sales%rowtype;
+  v_old_total numeric;
+  v_old_cost numeric;
+  v_new_total numeric := 0;
+  v_new_cost numeric := 0;
+  v_qty_delta numeric;
+  v_promo_discount numeric;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select * into v_item from sale_items where id = p_sale_item_id for update;
+  if not found then
+    raise exception 'ไม่พบรายการนี้';
+  end if;
+
+  select * into v_sale from sales where id = v_item.sale_id;
+  if v_sale.queue_id is null or v_sale.status <> 'open' then
+    raise exception 'แก้ไขรายการนี้ไม่ได้';
+  end if;
+
+  v_old_total := v_item.total;
+  v_old_cost := v_item.cost * v_item.quantity;
+  v_qty_delta := coalesce(p_quantity, 0) - v_item.quantity;
+
+  if p_quantity is null or p_quantity <= 0 then
+    delete from sale_items where id = p_sale_item_id;
+  else
+    v_new_total := v_item.price * p_quantity;
+    v_new_cost := v_item.cost * p_quantity;
+    update sale_items set quantity = p_quantity, total = v_new_total where id = p_sale_item_id;
+  end if;
+
+  if v_item.product_id is not null then
+    update products set stock = stock - v_qty_delta, updated_at = now()
+      where id = v_item.product_id and track_stock;
+  end if;
+
+  update sales set
+    subtotal = subtotal - v_old_total + v_new_total,
+    cost_total = cost_total - v_old_cost + v_new_cost
+    where id = v_item.sale_id;
+
+  v_promo_discount := public.calculate_promo_discount(v_item.sale_id);
+  update sales set
+    discount = v_promo_discount,
+    total = greatest(subtotal - v_promo_discount, 0)
+    where id = v_item.sale_id;
+end;
+$$;
+
+-- ล้างตะกร้าทั้งคิว (ยังไม่เคยเก็บเงิน จึงลบบิล "open" ทิ้งได้เลย ไม่ต้องเก็บเป็นประวัติ) พร้อมคืนสต๊อก
+create or replace function public.clear_quick_sale_queue(p_queue_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_sale_id uuid;
+  v_item record;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select id into v_sale_id from sales where queue_id = p_queue_id and status = 'open' limit 1;
+  if v_sale_id is null then
+    return;
+  end if;
+
+  for v_item in select product_id, quantity from sale_items where sale_id = v_sale_id loop
+    if v_item.product_id is not null then
+      update products set stock = stock + v_item.quantity, updated_at = now()
+        where id = v_item.product_id and track_stock;
+    end if;
+  end loop;
+
+  delete from sales where id = v_sale_id;
+end;
+$$;
+
+-- เก็บเงิน/ปิดคิว: ปิดบิล "open" ของคิวเป็น "completed" พร้อมรับส่วนลด/วิธีชำระ/เงินรับ (เหมือน checkout_table แต่สำหรับขายด่วน)
+create or replace function public.checkout_quick_sale_queue(
+  p_sale_id uuid,
+  p_discount numeric default 0,
+  p_payment_method text default 'cash',
+  p_received numeric default null,
+  p_note text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_subtotal numeric;
+  v_total numeric;
+  v_sale_number bigint;
+  v_queue_name text;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select s.subtotal, s.sale_number, q.name
+    into v_subtotal, v_sale_number, v_queue_name
+    from sales s join quick_sale_queues q on q.id = s.queue_id
+    where s.id = p_sale_id and s.status = 'open';
+  if not found then
+    raise exception 'ไม่พบบิลที่เปิดอยู่ของคิวนี้';
+  end if;
+
+  v_total := greatest(v_subtotal - coalesce(p_discount, 0), 0);
+
+  update sales set
+    discount = coalesce(p_discount, 0),
+    total = v_total,
+    payment_method = p_payment_method,
+    received = p_received,
+    change = case when p_received is not null then greatest(p_received - v_total, 0) end,
+    note = p_note,
+    status = 'completed'
+    where id = p_sale_id;
+
+  perform public.log_action('checkout', 'sales', p_sale_id::text,
+    format('เก็บเงินขายด่วน (%s) บิล #%s ยอด %s บาท (%s)', v_queue_name, v_sale_number, v_total, p_payment_method));
+end;
+$$;
+
+revoke execute on function public.add_quick_sale_item from public, anon;
+revoke execute on function public.set_quick_sale_item_quantity from public, anon;
+revoke execute on function public.clear_quick_sale_queue from public, anon;
+revoke execute on function public.checkout_quick_sale_queue from public, anon;
+grant execute on function public.add_quick_sale_item to authenticated;
+grant execute on function public.set_quick_sale_item_quantity to authenticated;
+grant execute on function public.clear_quick_sale_queue to authenticated;
+grant execute on function public.checkout_quick_sale_queue to authenticated;
+
+alter publication supabase_realtime add table public.quick_sale_queues;
