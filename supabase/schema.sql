@@ -1963,3 +1963,25 @@ create policy "owner full access" on public.business_plans
   for all to authenticated using (public.is_owner()) with check (public.is_owner());
 
 alter publication supabase_realtime add table public.business_plans;
+
+-- ============================================================
+-- จัดอันดับสินค้าขายดี — ใช้เรียงเมนูหน้า "ขายด่วน" ให้สินค้าขายดีอยู่บนสุด
+-- ============================================================
+create or replace function public.get_product_sales_counts(p_days int default 30)
+returns table(product_id uuid, qty numeric)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select si.product_id, sum(si.quantity) as qty
+  from public.sale_items si
+  join public.sales s on s.id = si.sale_id
+  where s.status = 'completed'
+    and si.product_id is not null
+    and s.created_at >= now() - (p_days || ' days')::interval
+  group by si.product_id;
+$$;
+
+revoke execute on function public.get_product_sales_counts from public, anon;
+grant execute on function public.get_product_sales_counts to authenticated;

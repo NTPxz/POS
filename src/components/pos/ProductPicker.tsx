@@ -10,12 +10,18 @@ export default function ProductPicker({
   categories,
   onAdd,
   hideStockCount = false,
+  layout = "grid",
+  quantities,
 }: {
   products: Product[];
   categories: Category[];
   onAdd: (product: Product) => void;
   /** ซ่อนตัวเลขจำนวนคงเหลือ (ใช้ในหน้าที่ลูกค้าสแกนสั่งเอง) — ยังโชว์ "หมด" อยู่ถ้าของจริงหมด */
   hideStockCount?: boolean;
+  /** "row" = การ์ดแถวยาวความสูงต่ำ เห็นเมนูได้เยอะขึ้นต่อหน้าจอ (ใช้หน้าขายด่วน) */
+  layout?: "grid" | "row";
+  /** จำนวนที่กดเพิ่มไปแล้วของแต่ละสินค้า โชว์เป็นตัวเลขบนการ์ด (ใช้กับ layout="row") */
+  quantities?: Map<string, number>;
 }) {
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
@@ -81,6 +87,18 @@ export default function ProductPicker({
               ? "ยังไม่มีสินค้า — ไปที่เมนู “สินค้า” เพื่อเพิ่มสินค้า"
               : "ไม่พบสินค้าที่ค้นหา"}
           </p>
+        </div>
+      ) : layout === "row" ? (
+        <div className="flex flex-col gap-2">
+          {filtered.map((p) => (
+            <ProductRow
+              key={p.id}
+              product={p}
+              quantity={quantities?.get(p.id) ?? 0}
+              onAdd={() => onAdd(p)}
+              hideStockCount={hideStockCount}
+            />
+          ))}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
@@ -180,6 +198,77 @@ function ProductCard({
           {baht(product.price)}
         </p>
       </div>
+    </button>
+  );
+}
+
+function ProductRow({
+  product,
+  quantity,
+  onAdd,
+  hideStockCount = false,
+}: {
+  product: Product;
+  quantity: number;
+  onAdd: () => void;
+  hideStockCount?: boolean;
+}) {
+  const outOfStock = product.track_stock && product.stock <= 0;
+  const lowStock =
+    product.track_stock &&
+    product.stock > 0 &&
+    product.stock <= product.low_stock_threshold;
+
+  return (
+    <button
+      onClick={onAdd}
+      className="card flex items-center gap-3 p-2 text-left transition active:scale-[0.98] hover:border-brand-300"
+    >
+      <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-neutral-50">
+        {product.image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={product.image_url}
+            alt={product.name}
+            width={96}
+            height={96}
+            loading="lazy"
+            decoding="async"
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Package className="h-5 w-5 text-neutral-300" strokeWidth={1.5} />
+          </div>
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium leading-snug">
+          {product.name}
+        </p>
+        <p className="font-bold text-brand-600">{baht(product.price)}</p>
+      </div>
+
+      {product.track_stock && (!hideStockCount || outOfStock) && (
+        <span
+          className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
+            outOfStock
+              ? "bg-red-100 text-red-600"
+              : lowStock
+                ? "bg-amber-100 text-amber-700"
+                : "bg-neutral-100 text-neutral-500"
+          }`}
+        >
+          {outOfStock ? "หมด" : `เหลือ ${formatNumber(product.stock)}`}
+        </span>
+      )}
+
+      {quantity > 0 && (
+        <span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 px-1.5 text-sm font-bold text-white">
+          {formatNumber(quantity)}
+        </span>
+      )}
     </button>
   );
 }

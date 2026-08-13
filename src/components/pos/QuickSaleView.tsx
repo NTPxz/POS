@@ -8,6 +8,8 @@ import { CartItem, Category, PaymentMethod, Product, Promotion } from "@/lib/typ
 import ProductPicker from "@/components/pos/ProductPicker";
 import PaymentFields from "@/components/pos/PaymentFields";
 
+const QUEUE_COUNT = 5;
+
 export default function QuickSaleView({
   products,
   categories,
@@ -17,20 +19,57 @@ export default function QuickSaleView({
   categories: Category[];
   onSaleDone: () => void;
 }) {
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const supabase = useMemo(() => createClient(), []);
+  const [carts, setCarts] = useState<CartItem[][]>(() =>
+    Array.from({ length: QUEUE_COUNT }, () => [])
+  );
+  const [activeQueue, setActiveQueue] = useState(0);
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [salesRank, setSalesRank] = useState<Map<string, number>>(new Map());
   const [successInfo, setSuccessInfo] = useState<{
     total: number;
     received: number | null;
     change: number | null;
   } | null>(null);
 
+  useEffect(() => {
+    supabase
+      .rpc("get_product_sales_counts", { p_days: 30 })
+      .then(({ data }) => {
+        const map = new Map<string, number>();
+        for (const row of (data as { product_id: string; qty: number }[]) ?? []) {
+          map.set(row.product_id, Number(row.qty));
+        }
+        setSalesRank(map);
+      });
+  }, [supabase]);
+
+  // สินค้าขายดี (ขายเยอะสุดใน 30 วันล่าสุด) อยู่บนสุด — ที่เหลือเรียงตามลำดับเดิม
+  const sortedProducts = useMemo(() => {
+    if (salesRank.size === 0) return products;
+    return [...products].sort(
+      (a, b) => (salesRank.get(b.id) ?? 0) - (salesRank.get(a.id) ?? 0)
+    );
+  }, [products, salesRank]);
+
+  const cart = carts[activeQueue];
+  const cartQuantities = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of cart) map.set(item.product.id, item.quantity);
+    return map;
+  }, [cart]);
   const itemCount = cart.reduce((s, i) => s + i.quantity, 0);
   const subtotal = cart.reduce((s, i) => s + i.product.price * i.quantity, 0);
 
+  function updateActiveCart(updater: (cart: CartItem[]) => CartItem[]) {
+    setCarts((prev) =>
+      prev.map((c, i) => (i === activeQueue ? updater(c) : c))
+    );
+  }
+
   function addToCart(product: Product) {
-    setCart((prev) => {
+    updateActiveCart((prev) => {
       const found = prev.find((i) => i.product.id === product.id);
       if (found) {
         return prev.map((i) =>
@@ -42,7 +81,7 @@ export default function QuickSaleView({
   }
 
   function changeQty(productId: string, delta: number) {
-    setCart((prev) =>
+    updateActiveCart((prev) =>
       prev
         .map((i) =>
           i.product.id === productId
@@ -54,7 +93,7 @@ export default function QuickSaleView({
   }
 
   function removeItem(productId: string) {
-    setCart((prev) => prev.filter((i) => i.product.id !== productId));
+    updateActiveCart((prev) => prev.filter((i) => i.product.id !== productId));
   }
 
   function handleCheckoutDone(info: {
@@ -64,7 +103,7 @@ export default function QuickSaleView({
   }) {
     setCheckoutOpen(false);
     setCartOpen(false);
-    setCart([]);
+    updateActiveCart(() => []);
     setSuccessInfo(info);
     onSaleDone();
   }
@@ -76,13 +115,22 @@ export default function QuickSaleView({
       onChangeQty={changeQty}
       onRemove={removeItem}
       onCheckout={() => setCheckoutOpen(true)}
-      onClear={() => setCart([])}
+      onClear={() => updateActiveCart(() => [])}
     />
   );
 
   return (
     <div className="flex flex-1 flex-col lg:flex-row">
-      <ProductPicker products={products} categories={categories} onAdd={addToCart} />
+      <div className="flex flex-1 flex-col">
+        <QueueTabs carts={carts} activeQueue={activeQueue} onSelect={setActiveQueue} />
+        <ProductPicker
+          products={sortedProducts}
+          categories={categories}
+          onAdd={addToCart}
+          layout="row"
+          quantities={cartQuantities}
+        />
+      </div>
 
       {/* ตะกร้า: จอใหญ่แสดงเป็น panel ขวา */}
       <div className="hidden w-96 shrink-0 border-l border-neutral-200 bg-white lg:flex lg:flex-col">
@@ -135,6 +183,49 @@ export default function QuickSaleView({
       {successInfo && (
         <SuccessModal info={successInfo} onClose={() => setSuccessInfo(null)} />
       )}
+    </div>
+  );
+}
+
+function QueueTabs({
+  carts,
+  activeQueue,
+  onSelect,
+}: {
+  carts: CartItem[][];
+  activeQueue: number;
+  onSelect: (index: number) => void;
+}) {
+  return (
+    <div className="no-scrollbar flex gap-2 overflow-x-auto border-b border-neutral-200 bg-white px-4 py-2.5">
+      {carts.map((cart, i) => {
+        const count = cart.reduce((s, item) => s + item.quantity, 0);
+        const active = i === activeQueue;
+        return (
+          <button
+            key={i}
+            onClick={() => onSelect(i)}
+            className={`relative shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition ${
+              active
+                ? "bg-brand-600 text-white"
+                : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
+            }`}
+          >
+            คิว {i + 1}
+            {count > 0 && (
+              <span
+                className={`absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-bold ${
+                  active
+                    ? "bg-white text-brand-700"
+                    : "bg-brand-600 text-white"
+                }`}
+              >
+                {formatNumber(count)}
+              </span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }
