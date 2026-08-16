@@ -83,6 +83,7 @@ export default function OrderNotifications() {
       .select("id, sales!inner(status, dining_tables(name))")
       .eq("status", "pending")
       .eq("sales.status", "open")
+      .not("sales.table_id", "is", null)
       .lt("created_at", cutoff);
 
     const rows =

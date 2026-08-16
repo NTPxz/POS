@@ -1961,8 +1961,10 @@ begin
 
   if v_item_id is null then
     v_new_qty := 1;
-    insert into sale_items (sale_id, product_id, product_name, price, cost, quantity, total)
-    values (v_sale_id, v_product.id, v_product.name, v_product.price, v_product.cost, 1, v_product.price)
+    -- ขายด่วนไม่มี workflow ครัว (pending/accepted/served) เหมือนโหมดเปิดโต๊ะ ถือว่า
+    -- "เสิร์ฟแล้ว" ทันทีที่กดเพิ่ม กัน status default 'pending' ไปโดนนับเป็นออเดอร์ค้างรับผิดๆ
+    insert into sale_items (sale_id, product_id, product_name, price, cost, quantity, total, status)
+    values (v_sale_id, v_product.id, v_product.name, v_product.price, v_product.cost, 1, v_product.price, 'served')
     returning id into v_item_id;
   else
     v_new_qty := v_new_qty + 1;
