@@ -224,9 +224,9 @@ function ProductsPageContent() {
           <p>{products.length === 0 ? "ยังไม่มีสินค้า — กด “เพิ่มสินค้า” เพื่อเริ่มต้น" : "ไม่พบสินค้าที่ค้นหา"}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="flex flex-col gap-2">
           {filtered.map((p) => (
-            <ProductListCard
+            <ProductListRow
               key={p.id}
               product={p}
               isOwner={isOwner}
@@ -626,7 +626,7 @@ function ProductModal({
   );
 }
 
-function ProductListCard({
+function ProductListRow({
   product: p,
   isOwner,
   categoryName,
@@ -646,11 +646,11 @@ function ProductListCard({
   const low = p.track_stock && p.stock <= p.low_stock_threshold;
 
   return (
-    <div className={`card flex flex-col overflow-hidden ${p.is_sold_out ? "opacity-60" : ""}`}>
+    <div className={`card flex items-center gap-3 p-2.5 ${p.is_sold_out ? "opacity-60" : ""}`}>
       <button
         type="button"
         onClick={onEdit}
-        className="relative aspect-square w-full shrink-0 overflow-hidden bg-neutral-50 text-left"
+        className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-neutral-50"
       >
         {p.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -661,69 +661,61 @@ function ProductListCard({
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center">
-            <Package className="h-10 w-10 text-neutral-300" strokeWidth={1.5} />
+            <Package className="h-6 w-6 text-neutral-300" strokeWidth={1.5} />
           </div>
-        )}
-        {p.track_stock && (
-          <span
-            className={`absolute right-2 top-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
-              p.stock <= 0
-                ? "bg-red-100 text-red-600"
-                : low
-                  ? "bg-amber-100 text-amber-700"
-                  : "bg-white/90 text-neutral-600"
-            }`}
-          >
-            {p.stock <= 0 ? "หมด" : `เหลือ ${formatNumber(p.stock)}`}
-          </span>
         )}
       </button>
 
-      <div className="flex flex-1 flex-col p-3">
-        <button type="button" onClick={onEdit} className="text-left">
-          <p className="line-clamp-2 text-sm font-semibold leading-snug">{p.name}</p>
-          <p className="mt-0.5 truncate text-xs text-neutral-400">
-            {categoryName}
-            {p.barcode ? ` · ${p.barcode}` : ""}
-          </p>
-        </button>
-
-        <div className="mt-1.5 flex items-baseline justify-between gap-2">
-          <span className="text-lg font-bold text-brand-600">{baht(p.price)}</span>
+      <button type="button" onClick={onEdit} className="min-w-0 flex-1 text-left">
+        <p className="truncate text-sm font-semibold leading-snug">
+          {p.name}
+        </p>
+        <p className="truncate text-xs text-neutral-400">
+          {categoryName}
+          {p.barcode ? ` · ${p.barcode}` : ""}
+        </p>
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="font-bold text-brand-600">{baht(p.price)}</span>
           {isOwner && (
-            <span className="shrink-0 text-xs text-green-600">
+            <span className="text-xs text-green-600">
               กำไร {baht(p.price - p.cost)}
             </span>
           )}
+          {p.track_stock && (
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                p.stock <= 0
+                  ? "bg-red-100 text-red-600"
+                  : low
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-neutral-100 text-neutral-500"
+              }`}
+            >
+              {p.stock <= 0 ? "หมด" : `เหลือ ${formatNumber(p.stock)}`}
+            </span>
+          )}
         </div>
+      </button>
 
-        <div className="mt-auto flex gap-1.5 pt-3">
-          <button
-            type="button"
-            onClick={onEdit}
-            className="flex-1 rounded-lg bg-brand-50 py-2 text-sm font-medium text-brand-600 transition active:scale-95"
-          >
-            แก้ไข
-          </button>
-          <button
-            type="button"
-            onClick={() => onToggleSoldOut(!p.is_sold_out)}
-            disabled={savingSoldOut}
-            className={`flex-1 rounded-lg py-2 text-sm font-medium transition active:scale-95 disabled:opacity-50 ${
-              p.is_sold_out ? "bg-red-50 text-red-600" : "bg-neutral-100 text-neutral-500"
-            }`}
-          >
-            {p.is_sold_out ? "ของหมด" : "มีของขาย"}
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            className="shrink-0 rounded-lg bg-red-50 px-3 text-red-500 transition active:scale-95"
-            aria-label="ลบสินค้า"
-          >
-            <Trash2 className="h-4 w-4" strokeWidth={2} />
-          </button>
-        </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => onToggleSoldOut(!p.is_sold_out)}
+          disabled={savingSoldOut}
+          className={`rounded-lg px-2.5 py-2 text-xs font-semibold transition active:scale-95 disabled:opacity-50 ${
+            p.is_sold_out ? "bg-red-50 text-red-600" : "bg-neutral-100 text-neutral-500"
+          }`}
+        >
+          {p.is_sold_out ? "ของหมด" : "มีของขาย"}
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="rounded-lg p-2 text-neutral-400 transition hover:bg-red-50 hover:text-red-500 active:scale-95"
+          aria-label="ลบสินค้า"
+        >
+          <Trash2 className="h-4 w-4" strokeWidth={2} />
+        </button>
       </div>
     </div>
   );
