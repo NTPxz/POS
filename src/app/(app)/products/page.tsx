@@ -698,16 +698,20 @@ function ProductListRow({
       </button>
 
       <div className="flex shrink-0 items-center gap-1.5">
-        <button
-          type="button"
-          onClick={() => onToggleSoldOut(!p.is_sold_out)}
-          disabled={savingSoldOut}
-          className={`rounded-lg px-2.5 py-2 text-xs font-semibold transition active:scale-95 disabled:opacity-50 ${
-            p.is_sold_out ? "bg-red-50 text-red-600" : "bg-neutral-100 text-neutral-500"
-          }`}
+        <label
+          className={`flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-semibold transition active:scale-95 ${
+            savingSoldOut ? "opacity-50" : ""
+          } ${p.is_sold_out ? "bg-red-50 text-red-600" : "bg-neutral-100 text-neutral-500"}`}
         >
-          {p.is_sold_out ? "ของหมด" : "มีของขาย"}
-        </button>
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-red-500"
+            checked={p.is_sold_out}
+            disabled={savingSoldOut}
+            onChange={(e) => onToggleSoldOut(e.target.checked)}
+          />
+          ของหมด
+        </label>
         <button
           type="button"
           onClick={onDelete}
