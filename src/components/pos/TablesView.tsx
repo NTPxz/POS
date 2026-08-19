@@ -22,6 +22,7 @@ import { PENDING_ORDER_REMINDER_MS } from "@/lib/constants";
 import {
   Category,
   DiningTable,
+  hasRole,
   PaymentMethod,
   Product,
   SALE_ITEM_STATUS_LABELS,
@@ -47,10 +48,12 @@ export default function TablesView({
   const supabase = useMemo(() => createClient(), []);
   const { profile } = useProfile();
   const isOwner = profile?.role === "owner";
+  const isManagerUp = !!profile && hasRole(profile.role, "manager");
   const { focusTableId, consumeFocusTableId } = useTableAlert();
 
   const [tables, setTables] = useState<DiningTable[]>([]);
   const [openSales, setOpenSales] = useState<Map<string, SaleWithItems>>(new Map());
+  const [creatorNames, setCreatorNames] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTableId, setActiveTableId] = useState<string | null>(null);
@@ -115,6 +118,36 @@ export default function TablesView({
     };
   }, [supabase, loadTables]);
 
+  // ชื่อคนกดสั่งแต่ละรายการ — เห็นเฉพาะผู้จัดการขึ้นไป (RLS ของ profiles จำกัดพนักงานทั่วไป
+  // ให้อ่านได้แค่โปรไฟล์ตัวเอง) ใช้แสดงป้าย "โดย ..." เวลาโต๊ะเดียวกันมีหลายรอบจากคนละคน
+  useEffect(() => {
+    if (!isManagerUp) {
+      setCreatorNames(new Map());
+      return;
+    }
+    const ids = new Set<string>();
+    for (const sale of openSales.values()) {
+      for (const item of sale.sale_items) {
+        if (item.created_by) ids.add(item.created_by);
+      }
+    }
+    if (ids.size === 0) {
+      setCreatorNames(new Map());
+      return;
+    }
+    supabase
+      .from("profiles")
+      .select("id, full_name, phone")
+      .in("id", [...ids])
+      .then(({ data }) => {
+        const map = new Map<string, string>();
+        for (const p of (data as { id: string; full_name: string | null; phone: string | null }[]) ?? []) {
+          map.set(p.id, p.full_name || p.phone || "พนักงาน");
+        }
+        setCreatorNames(map);
+      });
+  }, [supabase, openSales, isManagerUp]);
+
   const activeTable = tables.find((t) => t.id === activeTableId) ?? null;
   const activeSale = activeTableId ? openSales.get(activeTableId) ?? null : null;
 
@@ -125,6 +158,7 @@ export default function TablesView({
         sale={activeSale}
         products={products}
         categories={categories}
+        creatorNames={creatorNames}
         onBack={() => setActiveTableId(null)}
         onChanged={() => {
           loadTables(true);
@@ -260,6 +294,7 @@ function TableOrderSession({
   sale,
   products,
   categories,
+  creatorNames,
   onBack,
   onChanged,
 }: {
@@ -267,6 +302,7 @@ function TableOrderSession({
   sale: SaleWithItems | null;
   products: Product[];
   categories: Category[];
+  creatorNames: Map<string, string>;
   onBack: () => void;
   onChanged: () => void;
 }) {
@@ -520,6 +556,7 @@ function TableOrderSession({
           resolveBusyId={resolveBusyId}
           resolveError={resolveError}
           onResolveRequest={resolveEditRequest}
+          creatorNames={creatorNames}
         />
       </div>
 
@@ -570,6 +607,7 @@ function TableOrderSession({
               resolveBusyId={resolveBusyId}
               resolveError={resolveError}
               onResolveRequest={resolveEditRequest}
+              creatorNames={creatorNames}
             />
           </div>
         </div>
@@ -612,6 +650,7 @@ function OrderPanel({
   resolveBusyId,
   resolveError,
   onResolveRequest,
+  creatorNames,
 }: {
   table: DiningTable;
   sale: SaleWithItems | null;
@@ -633,6 +672,7 @@ function OrderPanel({
   resolveBusyId: string | null;
   resolveError: string | null;
   onResolveRequest: (requestId: string, approve: boolean) => void;
+  creatorNames: Map<string, string>;
 }) {
   const existingTotal = sale ? Number(sale.subtotal) : 0;
 
@@ -665,6 +705,11 @@ function OrderPanel({
                         <p className="text-xs text-neutral-500">
                           {baht(Number(item.total))}
                         </p>
+                        {item.created_by && creatorNames.get(item.created_by) && (
+                          <p className="text-xs text-neutral-400">
+                            โดย {creatorNames.get(item.created_by)}
+                          </p>
+                        )}
                         {item.note && (
                           <p className="mt-0.5 truncate text-xs font-medium italic text-amber-600">
                             หมายเหตุ: {item.note}

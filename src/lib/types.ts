@@ -29,6 +29,7 @@ export type Product = {
   is_sold_out: boolean;
   created_at: string;
   updated_at: string;
+  updated_by: string | null;
 };
 
 export type PaymentMethod = "cash" | "transfer" | "card";
@@ -78,6 +79,7 @@ export type SaleItem = {
   note: string | null;
   pending_edit_quantity: number | null;
   pending_edit_request_id: string | null;
+  created_by: string | null;
   created_at: string;
 };
 

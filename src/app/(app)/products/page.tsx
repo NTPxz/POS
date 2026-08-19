@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
-  AlertTriangle,
   ImageOff,
   Package,
   Plus,
   RefreshCw,
   Tag,
+  Trash2,
   Upload,
   X,
 } from "lucide-react";
@@ -224,199 +224,20 @@ function ProductsPageContent() {
           <p>{products.length === 0 ? "ยังไม่มีสินค้า — กด “เพิ่มสินค้า” เพื่อเริ่มต้น" : "ไม่พบสินค้าที่ค้นหา"}</p>
         </div>
       ) : (
-        <>
-          {/* ตารางสำหรับจอใหญ่ */}
-          <div className="card hidden overflow-x-auto md:block">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-neutral-200 text-left text-neutral-500">
-                  <th className="px-4 py-3 font-medium">สินค้า</th>
-                  <th className="px-4 py-3 font-medium">หมวดหมู่</th>
-                  <th className="px-4 py-3 text-right font-medium">ราคาขาย</th>
-                  {isOwner && (
-                    <>
-                      <th className="px-4 py-3 text-right font-medium">ต้นทุน</th>
-                      <th className="px-4 py-3 text-right font-medium">กำไร/ชิ้น</th>
-                    </>
-                  )}
-                  <th className="px-4 py-3 text-right font-medium">คงเหลือ</th>
-                  <th className="px-4 py-3 text-center font-medium">ของหมด</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((p) => {
-                  const low = p.track_stock && p.stock <= p.low_stock_threshold;
-                  return (
-                    <tr
-                      key={p.id}
-                      className={`border-b border-neutral-100 last:border-0 hover:bg-neutral-50 ${
-                        p.is_sold_out ? "opacity-60" : ""
-                      }`}
-                    >
-                      <td className="px-4 py-3">
-                        <p className="font-medium">
-                          {p.name}
-                          {p.is_sold_out && (
-                            <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-semibold text-neutral-500">
-                              ของหมด
-                            </span>
-                          )}
-                        </p>
-                        {p.barcode && (
-                          <p className="text-xs text-neutral-400">{p.barcode}</p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-neutral-500">
-                        {catName(p.category_id)}
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold">
-                        {baht(p.price)}
-                      </td>
-                      {isOwner && (
-                        <>
-                          <td className="px-4 py-3 text-right text-neutral-500">
-                            {baht(p.cost)}
-                          </td>
-                          <td className="px-4 py-3 text-right text-green-600">
-                            {baht(p.price - p.cost)}
-                          </td>
-                        </>
-                      )}
-                      <td className="px-4 py-3 text-right">
-                        {p.track_stock ? (
-                          <span
-                            className={`inline-flex items-center gap-1 font-semibold ${
-                              p.stock <= 0
-                                ? "text-red-600"
-                                : low
-                                  ? "text-amber-600"
-                                  : ""
-                            }`}
-                          >
-                            {formatNumber(p.stock)}
-                            {low && (
-                              <AlertTriangle
-                                className="h-3.5 w-3.5"
-                                strokeWidth={2}
-                              />
-                            )}
-                          </span>
-                        ) : (
-                          <span className="text-neutral-400">ไม่นับ</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <input
-                          type="checkbox"
-                          className="h-5 w-5 accent-red-500"
-                          checked={p.is_sold_out}
-                          disabled={savingSoldOutId === p.id}
-                          onChange={(e) => toggleSoldOut(p, e.target.checked)}
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          className="mr-1 rounded-lg px-3 py-1.5 text-brand-600 hover:bg-brand-50"
-                          onClick={() => openEdit(p)}
-                        >
-                          แก้ไข
-                        </button>
-                        <button
-                          className="rounded-lg px-3 py-1.5 text-red-500 hover:bg-red-50"
-                          onClick={() => handleDelete(p)}
-                        >
-                          ลบ
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* การ์ดสำหรับมือถือ */}
-          <div className="space-y-3 md:hidden">
-            {filtered.map((p) => {
-              const low = p.track_stock && p.stock <= p.low_stock_threshold;
-              return (
-                <div key={p.id} className={`card p-4 ${p.is_sold_out ? "opacity-60" : ""}`}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="font-semibold">
-                        {p.name}
-                        {p.is_sold_out && (
-                          <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-semibold text-neutral-500">
-                            ของหมด
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-neutral-400">
-                        {catName(p.category_id)}
-                        {p.barcode ? ` · ${p.barcode}` : ""}
-                      </p>
-                    </div>
-                    {p.track_stock && (
-                      <span
-                        className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          p.stock <= 0
-                            ? "bg-red-100 text-red-600"
-                            : low
-                              ? "bg-amber-100 text-amber-700"
-                              : "bg-neutral-100 text-neutral-600"
-                        }`}
-                      >
-                        เหลือ {formatNumber(p.stock)}
-                      </span>
-                    )}
-                  </div>
-                  <label className="mt-3 flex items-center gap-2 text-sm text-neutral-600">
-                    <input
-                      type="checkbox"
-                      className="h-5 w-5 accent-red-500"
-                      checked={p.is_sold_out}
-                      disabled={savingSoldOutId === p.id}
-                      onChange={(e) => toggleSoldOut(p, e.target.checked)}
-                    />
-                    ของหมด (ปิดขายชั่วคราว)
-                  </label>
-
-                  <div className="mt-3 flex items-end justify-between">
-                    <div className="text-sm text-neutral-500">
-                      <p>
-                        ขาย{" "}
-                        <span className="font-bold text-neutral-900">
-                          {baht(p.price)}
-                        </span>
-                        {isOwner && ` · ทุน ${baht(p.cost)}`}
-                      </p>
-                      {isOwner && (
-                        <p className="text-green-600">
-                          กำไร {baht(p.price - p.cost)}/ชิ้น
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex gap-1">
-                      <button
-                        className="rounded-lg bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-600"
-                        onClick={() => openEdit(p)}
-                      >
-                        แก้ไข
-                      </button>
-                      <button
-                        className="rounded-lg bg-red-50 px-3 py-1.5 text-sm font-medium text-red-500"
-                        onClick={() => handleDelete(p)}
-                      >
-                        ลบ
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {filtered.map((p) => (
+            <ProductListCard
+              key={p.id}
+              product={p}
+              isOwner={isOwner}
+              categoryName={catName(p.category_id)}
+              savingSoldOut={savingSoldOutId === p.id}
+              onEdit={() => openEdit(p)}
+              onDelete={() => handleDelete(p)}
+              onToggleSoldOut={(soldOut) => toggleSoldOut(p, soldOut)}
+            />
+          ))}
+        </div>
       )}
         </>
       )}
@@ -458,6 +279,8 @@ function ProductModal({
   const supabase = useMemo(() => createClient(), []);
   const { profile } = useProfile();
   const isOwner = !!profile && hasRole(profile.role, "owner");
+  const isManagerUp = !!profile && hasRole(profile.role, "manager");
+  const [editorName, setEditorName] = useState<string | null>(null);
   const [form, setForm] = useState<ProductForm>(
     product
       ? {
@@ -484,6 +307,22 @@ function ProductModal({
 
   const price = parseFloat(form.price) || 0;
   const cost = parseFloat(form.cost) || 0;
+
+  // ใครแก้ไขสินค้านี้ล่าสุด — โปรไฟล์คนอื่นอ่านได้เฉพาะผู้จัดการขึ้นไปตาม RLS
+  useEffect(() => {
+    if (!product?.updated_by || !isManagerUp) {
+      setEditorName(null);
+      return;
+    }
+    supabase
+      .from("profiles")
+      .select("full_name, phone")
+      .eq("id", product.updated_by)
+      .maybeSingle()
+      .then(({ data }) => {
+        setEditorName(data?.full_name || data?.phone || null);
+      });
+  }, [supabase, product?.updated_by, isManagerUp]);
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -527,22 +366,38 @@ function ProductModal({
     e.preventDefault();
     setSaving(true);
     setError(null);
-    const payload = {
-      name: form.name.trim(),
-      barcode: form.barcode.trim() || null,
-      category_id: form.category_id || null,
-      price,
-      cost,
-      stock: parseFloat(form.stock) || 0,
-      track_stock: form.track_stock,
-      low_stock_threshold: parseFloat(form.low_stock_threshold) || 0,
-      stock_group: form.stock_group || null,
-      image_url: form.image_url.trim() || null,
-      updated_at: new Date().toISOString(),
-    };
+    const nextStock = parseFloat(form.stock) || 0;
+    // ฟอร์มโหลดค่า stock แค่ตอนเปิดครั้งแรก ถ้าเปิดฟอร์มค้างไว้แก้เรื่องอื่น (เช่นราคา) โดยไม่ได้
+    // แตะช่องนี้เลย แล้วระหว่างนั้นมีการขายตัดสต๊อกไปแล้ว การเซฟจะทับสต๊อกด้วยเลขเก่าที่ค้างอยู่
+    // ทำให้ยอดขายที่เพิ่งตัดไปหายไปเฉยๆ จึงส่ง stock ไปอัปเดตเฉพาะตอนพนักงานแก้เลขนี้จริงๆ เท่านั้น
+    const stockChanged = !product || nextStock !== product.stock;
+
     const { error } = product
-      ? await supabase.from("products").update(payload).eq("id", product.id)
-      : await supabase.from("products").insert(payload);
+      ? await supabase.rpc("update_product", {
+          p_id: product.id,
+          p_name: form.name.trim(),
+          p_barcode: form.barcode.trim() || null,
+          p_category_id: form.category_id || null,
+          p_price: price,
+          p_cost: cost,
+          p_stock: stockChanged ? nextStock : null,
+          p_track_stock: form.track_stock,
+          p_low_stock_threshold: parseFloat(form.low_stock_threshold) || 0,
+          p_stock_group: form.stock_group || null,
+          p_image_url: form.image_url.trim() || null,
+        })
+      : await supabase.from("products").insert({
+          name: form.name.trim(),
+          barcode: form.barcode.trim() || null,
+          category_id: form.category_id || null,
+          price,
+          cost,
+          stock: nextStock,
+          track_stock: form.track_stock,
+          low_stock_threshold: parseFloat(form.low_stock_threshold) || 0,
+          stock_group: form.stock_group || null,
+          image_url: form.image_url.trim() || null,
+        });
     if (error) {
       setError(`บันทึกไม่สำเร็จ: ${error.message}`);
       setSaving(false);
@@ -632,15 +487,17 @@ function ProductModal({
             </select>
           </Field>
 
-          <Field label="บาร์โค้ด">
-            <input
-              className="input"
-              value={form.barcode}
-              onChange={(e) => set({ barcode: e.target.value })}
-              placeholder="สแกนหรือพิมพ์บาร์โค้ด"
-              maxLength={50}
-            />
-          </Field>
+          {isOwner && (
+            <Field label="บาร์โค้ด">
+              <input
+                className="input"
+                value={form.barcode}
+                onChange={(e) => set({ barcode: e.target.value })}
+                placeholder="สแกนหรือพิมพ์บาร์โค้ด"
+                maxLength={50}
+              />
+            </Field>
+          )}
 
           {isOwner ? (
             <>
@@ -657,15 +514,11 @@ function ProductModal({
               </label>
 
               {form.track_stock && (
-                <div className="grid grid-cols-2 gap-3">
+                <>
                   <Field label="จำนวนคงเหลือ">
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      step="any"
-                      className="input"
+                    <QuantityStepper
                       value={form.stock}
-                      onChange={(e) => set({ stock: e.target.value })}
+                      onChange={(v) => set({ stock: v })}
                     />
                   </Field>
                   <Field label="แจ้งเตือนเมื่อต่ำกว่า">
@@ -679,7 +532,7 @@ function ProductModal({
                       onChange={(e) => set({ low_stock_threshold: e.target.value })}
                     />
                   </Field>
-                </div>
+                </>
               )}
 
               {form.track_stock && (
@@ -700,26 +553,18 @@ function ProductModal({
               )}
             </>
           ) : (
-            <>
-              <Field label="จำนวนคงเหลือ (นับสต๊อก)">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  step="any"
-                  className="input"
-                  value={form.stock}
-                  onChange={(e) => set({ stock: e.target.value })}
-                />
-              </Field>
-              <p className="text-xs text-neutral-400">
-                {form.track_stock
-                  ? `ตัดสต๊อกอัตโนมัติเมื่อขาย · แจ้งเตือนเมื่อต่ำกว่า ${formatNumber(parseFloat(form.low_stock_threshold) || 0)}${
-                      form.stock_group ? ` · กลุ่ม${STOCK_GROUP_LABELS[form.stock_group as StockGroup]}` : ""
-                    }`
-                  : "ยังไม่ได้เปิด \"นับสต๊อก\" (ตัดจำนวนอัตโนมัติเมื่อขาย) ไว้สำหรับสินค้านี้"}
-                {" — เปิด/ปิดค่านี้ได้เฉพาะเจ้าของร้าน"}
-              </p>
-            </>
+            <Field label="จำนวน">
+              <QuantityStepper
+                value={form.stock}
+                onChange={(v) => set({ stock: v })}
+              />
+            </Field>
+          )}
+
+          {editorName && (
+            <p className="-mt-2 text-xs text-neutral-400">
+              แก้ไขข้อมูลล่าสุดโดย {editorName}
+            </p>
           )}
 
           <Field label="รูปภาพสินค้า (ถ้ามี)">
@@ -777,6 +622,109 @@ function ProductModal({
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+function ProductListCard({
+  product: p,
+  isOwner,
+  categoryName,
+  savingSoldOut,
+  onEdit,
+  onDelete,
+  onToggleSoldOut,
+}: {
+  product: Product;
+  isOwner: boolean;
+  categoryName: string;
+  savingSoldOut: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+  onToggleSoldOut: (soldOut: boolean) => void;
+}) {
+  const low = p.track_stock && p.stock <= p.low_stock_threshold;
+
+  return (
+    <div className={`card flex flex-col overflow-hidden ${p.is_sold_out ? "opacity-60" : ""}`}>
+      <button
+        type="button"
+        onClick={onEdit}
+        className="relative aspect-square w-full shrink-0 overflow-hidden bg-neutral-50 text-left"
+      >
+        {p.image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={p.image_url}
+            alt={p.name}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Package className="h-10 w-10 text-neutral-300" strokeWidth={1.5} />
+          </div>
+        )}
+        {p.track_stock && (
+          <span
+            className={`absolute right-2 top-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
+              p.stock <= 0
+                ? "bg-red-100 text-red-600"
+                : low
+                  ? "bg-amber-100 text-amber-700"
+                  : "bg-white/90 text-neutral-600"
+            }`}
+          >
+            {p.stock <= 0 ? "หมด" : `เหลือ ${formatNumber(p.stock)}`}
+          </span>
+        )}
+      </button>
+
+      <div className="flex flex-1 flex-col p-3">
+        <button type="button" onClick={onEdit} className="text-left">
+          <p className="line-clamp-2 text-sm font-semibold leading-snug">{p.name}</p>
+          <p className="mt-0.5 truncate text-xs text-neutral-400">
+            {categoryName}
+            {p.barcode ? ` · ${p.barcode}` : ""}
+          </p>
+        </button>
+
+        <div className="mt-1.5 flex items-baseline justify-between gap-2">
+          <span className="text-lg font-bold text-brand-600">{baht(p.price)}</span>
+          {isOwner && (
+            <span className="shrink-0 text-xs text-green-600">
+              กำไร {baht(p.price - p.cost)}
+            </span>
+          )}
+        </div>
+
+        <div className="mt-auto flex gap-1.5 pt-3">
+          <button
+            type="button"
+            onClick={onEdit}
+            className="flex-1 rounded-lg bg-brand-50 py-2 text-sm font-medium text-brand-600 transition active:scale-95"
+          >
+            แก้ไข
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggleSoldOut(!p.is_sold_out)}
+            disabled={savingSoldOut}
+            className={`flex-1 rounded-lg py-2 text-sm font-medium transition active:scale-95 disabled:opacity-50 ${
+              p.is_sold_out ? "bg-red-50 text-red-600" : "bg-neutral-100 text-neutral-500"
+            }`}
+          >
+            {p.is_sold_out ? "ของหมด" : "มีของขาย"}
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="shrink-0 rounded-lg bg-red-50 px-3 text-red-500 transition active:scale-95"
+            aria-label="ลบสินค้า"
+          >
+            <Trash2 className="h-4 w-4" strokeWidth={2} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -892,6 +840,48 @@ function Field({
         {label}
       </label>
       {children}
+    </div>
+  );
+}
+
+function QuantityStepper({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  function bump(delta: number) {
+    const next = Math.max(0, (parseFloat(value) || 0) + delta);
+    onChange(String(next));
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => bump(-1)}
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-xl font-bold text-neutral-600 transition active:scale-95 hover:bg-neutral-200"
+        aria-label="ลดจำนวน"
+      >
+        −
+      </button>
+      <input
+        type="number"
+        inputMode="decimal"
+        step="any"
+        className="input text-center text-lg font-semibold"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <button
+        type="button"
+        onClick={() => bump(1)}
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-xl font-bold text-neutral-600 transition active:scale-95 hover:bg-neutral-200"
+        aria-label="เพิ่มจำนวน"
+      >
+        +
+      </button>
     </div>
   );
 }

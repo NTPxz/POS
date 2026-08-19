@@ -461,8 +461,8 @@ begin
     v_round_total := v_round_total + v_line_total;
     v_round_count := v_round_count + v_qty;
 
-    insert into sale_items (sale_id, product_id, product_name, price, cost, quantity, total)
-    values (v_sale_id, v_product.id, v_product.name, v_product.price, v_product.cost, v_qty, v_line_total);
+    insert into sale_items (sale_id, product_id, product_name, price, cost, quantity, total, created_by)
+    values (v_sale_id, v_product.id, v_product.name, v_product.price, v_product.cost, v_qty, v_line_total, auth.uid());
 
     if v_product.track_stock then
       update products set stock = stock - v_qty, updated_at = now() where id = v_product.id;
@@ -1963,8 +1963,9 @@ begin
     v_new_qty := 1;
     -- ขายด่วนไม่มี workflow ครัว (pending/accepted/served) เหมือนโหมดเปิดโต๊ะ ถือว่า
     -- "เสิร์ฟแล้ว" ทันทีที่กดเพิ่ม กัน status default 'pending' ไปโดนนับเป็นออเดอร์ค้างรับผิดๆ
-    insert into sale_items (sale_id, product_id, product_name, price, cost, quantity, total, status)
-    values (v_sale_id, v_product.id, v_product.name, v_product.price, v_product.cost, 1, v_product.price, 'served')
+    -- created_by stamp ไว้ตอนสร้างแถวเท่านั้น (ไม่เปลี่ยนตอนคนอื่นกดเพิ่มจำนวนซ้ำทีหลัง)
+    insert into sale_items (sale_id, product_id, product_name, price, cost, quantity, total, status, created_by)
+    values (v_sale_id, v_product.id, v_product.name, v_product.price, v_product.cost, 1, v_product.price, 'served', auth.uid())
     returning id into v_item_id;
   else
     v_new_qty := v_new_qty + 1;
@@ -2139,3 +2140,61 @@ grant execute on function public.clear_quick_sale_queue to authenticated;
 grant execute on function public.checkout_quick_sale_queue to authenticated;
 
 alter publication supabase_realtime add table public.quick_sale_queues;
+
+-- ============================================================
+-- Track ว่าใครกดเพิ่มเมนูแต่ละรายการเข้าบิล (แก้ปัญหาระบุคนไม่ได้เวลาบิลถูกใช้ร่วมกันหลายคน
+-- เช่น คิวขายด่วน/โต๊ะที่มีหลายรอบจากพนักงานคนละคน) และใครแก้ไขข้อมูลสินค้าล่าสุด
+-- ============================================================
+alter table public.sale_items add column if not exists created_by uuid references auth.users (id);
+
+-- ตั้งใจไม่ให้ถูกทับจากการตัดสต๊อกอัตโนมัติตอนขาย (ไม่งั้นจะโดนเขียนทับทุกครั้งที่มีการขาย
+-- จนไม่มีประโยชน์สำหรับ trace ว่าใครแก้ตัวเลขผ่านฟอร์มจริงๆ) จึงตั้งผ่าน update_product() เท่านั้น
+alter table public.products add column if not exists updated_by uuid references auth.users (id);
+
+-- แก้ไขสินค้าผ่านฟอร์ม: stamp updated_by เสมอ, stock เป็น optional (null = ไม่แตะ กันทับสต๊อกที่ขายไปแล้ว
+-- ระหว่างเปิดฟอร์มค้างไว้แก้ช่องอื่น — ต่อยอดจากฟิกซ์ก่อนหน้าที่ทำไว้ฝั่ง client)
+create or replace function public.update_product(
+  p_id uuid,
+  p_name text,
+  p_barcode text,
+  p_category_id uuid,
+  p_price numeric,
+  p_cost numeric,
+  p_stock numeric default null,
+  p_track_stock boolean default true,
+  p_low_stock_threshold numeric default 5,
+  p_stock_group text default null,
+  p_image_url text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  update products set
+    name = p_name,
+    barcode = p_barcode,
+    category_id = p_category_id,
+    price = p_price,
+    cost = p_cost,
+    stock = coalesce(p_stock, stock),
+    track_stock = p_track_stock,
+    low_stock_threshold = p_low_stock_threshold,
+    stock_group = p_stock_group,
+    image_url = p_image_url,
+    updated_by = auth.uid(),
+    updated_at = now()
+    where id = p_id;
+
+  if not found then
+    raise exception 'ไม่พบสินค้า';
+  end if;
+end;
+$$;
+
+revoke execute on function public.update_product from public, anon;
+grant execute on function public.update_product to authenticated;

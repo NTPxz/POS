@@ -16,6 +16,7 @@ import { createClient } from "@/lib/supabase/client";
 import { baht, formatNumber } from "@/lib/format";
 import {
   Category,
+  hasRole,
   PaymentMethod,
   Product,
   QuickSaleQueue,
@@ -24,6 +25,7 @@ import {
 } from "@/lib/types";
 import ProductPicker from "@/components/pos/ProductPicker";
 import PaymentFields from "@/components/pos/PaymentFields";
+import { useProfile } from "@/components/ProfileProvider";
 
 export default function QuickSaleView({
   products,
@@ -35,6 +37,8 @@ export default function QuickSaleView({
   onSaleDone: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
+  const { profile } = useProfile();
+  const isManagerUp = !!profile && hasRole(profile.role, "manager");
   const [queues, setQueues] = useState<QuickSaleQueue[]>([]);
   const [openSales, setOpenSales] = useState<Map<string, SaleWithItems>>(new Map());
   const [activeQueueId, setActiveQueueId] = useState<string | null>(null);
@@ -43,6 +47,7 @@ export default function QuickSaleView({
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [salesRank, setSalesRank] = useState<Map<string, number>>(new Map());
+  const [creatorNames, setCreatorNames] = useState<Map<string, string>>(new Map());
   const [successInfo, setSuccessInfo] = useState<{
     total: number;
     received: number | null;
@@ -103,6 +108,36 @@ export default function QuickSaleView({
       supabase.removeChannel(channel);
     };
   }, [supabase, loadQueues]);
+
+  // ชื่อคนกดเพิ่มแต่ละรายการ — เห็นเฉพาะผู้จัดการขึ้นไป (RLS ของ profiles จำกัดพนักงานทั่วไป
+  // ให้อ่านได้แค่โปรไฟล์ตัวเอง) ใช้แสดงป้าย "โดย ..." ในตะกร้าเวลาบิลถูกใช้ร่วมกันหลายคน
+  useEffect(() => {
+    if (!isManagerUp) {
+      setCreatorNames(new Map());
+      return;
+    }
+    const ids = new Set<string>();
+    for (const sale of openSales.values()) {
+      for (const item of sale.sale_items) {
+        if (item.created_by) ids.add(item.created_by);
+      }
+    }
+    if (ids.size === 0) {
+      setCreatorNames(new Map());
+      return;
+    }
+    supabase
+      .from("profiles")
+      .select("id, full_name, phone")
+      .in("id", [...ids])
+      .then(({ data }) => {
+        const map = new Map<string, string>();
+        for (const p of (data as { id: string; full_name: string | null; phone: string | null }[]) ?? []) {
+          map.set(p.id, p.full_name || p.phone || "พนักงาน");
+        }
+        setCreatorNames(map);
+      });
+  }, [supabase, openSales, isManagerUp]);
 
   useEffect(() => {
     supabase
@@ -213,6 +248,7 @@ export default function QuickSaleView({
     <CartPanel
       items={cartItems}
       subtotal={subtotal}
+      creatorNames={creatorNames}
       onChangeQty={changeQty}
       onRemove={removeItem}
       onCheckout={() => setCheckoutOpen(true)}
@@ -406,6 +442,7 @@ function QueueTabs({
 function CartPanel({
   items,
   subtotal,
+  creatorNames,
   onChangeQty,
   onRemove,
   onCheckout,
@@ -413,6 +450,7 @@ function CartPanel({
 }: {
   items: SaleItem[];
   subtotal: number;
+  creatorNames: Map<string, string>;
   onChangeQty: (item: SaleItem, delta: number) => void;
   onRemove: (item: SaleItem) => void;
   onCheckout: () => void;
@@ -455,6 +493,11 @@ function CartPanel({
                       {baht(Number(item.total))}
                     </span>
                   </p>
+                  {item.created_by && creatorNames.get(item.created_by) && (
+                    <p className="text-xs text-neutral-400">
+                      โดย {creatorNames.get(item.created_by)}
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-1">
                   <QtyButton onClick={() => onChangeQty(item, -1)}>
