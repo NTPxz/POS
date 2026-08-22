@@ -590,23 +590,37 @@ function CheckoutModal({
 
   // บันทึกส่วนลดลง DB ทันทีที่พิมพ์ (debounce กันยิงถี่เกิน) กันข้อมูลหายถ้าปิดหน้าต่างนี้
   // ไปโดยไม่กดยืนยันการขาย (เช่นสลับไปดูคิวอื่นแล้วกลับมา ก็ยังเห็นส่วนลดที่กรอกไว้)
-  const isFirstRender = useRef(true);
+  // เก็บค่าล่าสุดไว้ใน ref แยกจาก debounce timer เพราะถ้าปิด modal (unmount) ก่อนครบ 500ms
+  // useEffect cleanup ของ debounce จะแค่ "ยกเลิก" timer เฉยๆ ไม่ได้เขียนลง DB ให้ ต้องมี
+  // effect แยกที่ flush ค่าล่าสุดตอน unmount เสมอ ไม่งั้นพิมพ์เสร็จแล้วรีบปิดหน้าต่างจะหาย
+  const lastSavedDiscount = useRef(Number(sale.discount));
+  const pendingRef = useRef({ discount, total });
+  pendingRef.current = { discount, total };
+
+  function persistDiscount() {
+    if (pendingRef.current.discount === lastSavedDiscount.current) return;
+    lastSavedDiscount.current = pendingRef.current.discount;
+    supabase
+      .from("sales")
+      .update({ discount: pendingRef.current.discount, total: pendingRef.current.total })
+      .eq("id", sale.id)
+      .then(({ error }) => {
+        if (error) console.error("บันทึกส่วนลดไม่สำเร็จ:", error.message);
+      });
+  }
+
   useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-    const timer = setTimeout(() => {
-      supabase
-        .from("sales")
-        .update({ discount, total })
-        .eq("id", sale.id)
-        .then(({ error }) => {
-          if (error) console.error("บันทึกส่วนลดไม่สำเร็จ:", error.message);
-        });
-    }, 500);
+    const timer = setTimeout(persistDiscount, 500);
     return () => clearTimeout(timer);
-  }, [discount, total, sale.id, supabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [discount, total]);
+
+  useEffect(() => {
+    return () => {
+      persistDiscount();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function confirm() {
     setSaving(true);
@@ -623,6 +637,9 @@ function CheckoutModal({
       setSaving(false);
       return;
     }
+    // เช็คเอาต์เขียนส่วนลดสุดท้ายลง DB ไปแล้วผ่าน RPC ด้านบน กันไม่ให้ effect flush ตอน
+    // unmount (หลัง onDone ปิด modal) ไปยิง update ซ้ำอีกรอบเปล่าๆ
+    lastSavedDiscount.current = discount;
     onDone({
       total,
       received: method === "cash" ? received : null,
