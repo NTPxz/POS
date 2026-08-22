@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -587,6 +587,26 @@ function CheckoutModal({
   const total = Math.max(subtotal - discount, 0);
   const received = parseFloat(receivedStr) || 0;
   const cashInsufficient = method === "cash" && received < total;
+
+  // บันทึกส่วนลดลง DB ทันทีที่พิมพ์ (debounce กันยิงถี่เกิน) กันข้อมูลหายถ้าปิดหน้าต่างนี้
+  // ไปโดยไม่กดยืนยันการขาย (เช่นสลับไปดูคิวอื่นแล้วกลับมา ก็ยังเห็นส่วนลดที่กรอกไว้)
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      supabase
+        .from("sales")
+        .update({ discount, total })
+        .eq("id", sale.id)
+        .then(({ error }) => {
+          if (error) console.error("บันทึกส่วนลดไม่สำเร็จ:", error.message);
+        });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [discount, total, sale.id, supabase]);
 
   async function confirm() {
     setSaving(true);
