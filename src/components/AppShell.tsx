@@ -3,8 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 import {
   Banknote,
+  Building2,
+  Check,
+  ChevronDown,
   History,
   LayoutDashboard,
   Lightbulb,
@@ -21,6 +25,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/components/ProfileProvider";
+import { useBranch } from "@/components/BranchProvider";
 import { hasRole, Role, ROLE_LABELS } from "@/lib/types";
 import OrderNotifications from "@/components/OrderNotifications";
 import PushSetup from "@/components/PushSetup";
@@ -39,6 +44,7 @@ const NAV_ITEMS: {
   { href: "/products", label: "สินค้า", icon: Package, minRole: "staff" },
   { href: "/shopping-list", label: "ของที่ต้องซื้อ", icon: ShoppingBasket, minRole: "staff" },
   { href: "/dashboard", label: "ภาพรวม", icon: LayoutDashboard, minRole: "owner" },
+  { href: "/summary", label: "รวมยอด", icon: Building2, minRole: "owner" },
   { href: "/income", label: "รายได้", icon: TrendingUp, minRole: "owner" },
   { href: "/expenses", label: "รายจ่าย", icon: Wallet, minRole: "owner" },
   { href: "/cash", label: "เงินสด", icon: Banknote, minRole: "owner" },
@@ -56,6 +62,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const role = profile?.role ?? "staff";
   const visibleItems = NAV_ITEMS.filter((item) => hasRole(role, item.minRole));
   const { alert, alertTableId, goToTables } = useTableAlert();
+  const { branches, activeBranchId, canSwitchBranch, setActiveBranchId } = useBranch();
+  const [branchMenuOpen, setBranchMenuOpen] = useState(false);
+  const activeBranchName = branches.find((b) => b.id === activeBranchId)?.name ?? "";
 
   useWakeLock(!!profile);
 
@@ -91,6 +100,48 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </p>
           </div>
         </div>
+
+        {activeBranchName && (
+          <div className="relative mx-3 mb-2">
+            <button
+              onClick={() => canSwitchBranch && setBranchMenuOpen((v) => !v)}
+              className={`flex w-full items-center gap-2 rounded-xl bg-neutral-50 px-3 py-2 text-left ${
+                canSwitchBranch ? "hover:bg-neutral-100" : ""
+              }`}
+            >
+              <Building2 className="h-4 w-4 shrink-0 text-brand-600" strokeWidth={2} />
+              <span className="min-w-0 flex-1 truncate text-xs font-semibold text-neutral-700">
+                {activeBranchName}
+              </span>
+              {canSwitchBranch && (
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-neutral-400" strokeWidth={2} />
+              )}
+            </button>
+            {branchMenuOpen && canSwitchBranch && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setBranchMenuOpen(false)} />
+                <div className="absolute left-0 right-0 top-full z-40 mt-1 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-lg">
+                  {branches.map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => {
+                        setActiveBranchId(b.id);
+                        setBranchMenuOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm hover:bg-neutral-50"
+                    >
+                      <span className="min-w-0 flex-1 truncate">{b.name}</span>
+                      {b.id === activeBranchId && (
+                        <Check className="h-4 w-4 shrink-0 text-brand-600" strokeWidth={2.5} />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         <nav className="flex-1 space-y-1 px-3">
           {visibleItems.map((item) => {
             const active = pathname === item.href;
@@ -140,6 +191,40 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
          เลื่อนตามเนื้อหาระหว่างสกอลล์ก่อน snap กลับที่เดิม — ไม่ fixed แต่ยึด
          layout ด้วย flexbox ความสูงคงที่แทน ตัดปัญหานี้ไปเลย) */}
       <div className="flex h-dvh min-w-0 flex-1 flex-col md:ml-56">
+        {activeBranchName && (
+          <div className="relative shrink-0 border-b border-neutral-200 bg-white px-4 py-2 md:hidden">
+            <button
+              onClick={() => canSwitchBranch && setBranchMenuOpen((v) => !v)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-neutral-600"
+            >
+              <Building2 className="h-3.5 w-3.5 text-brand-600" strokeWidth={2} />
+              {activeBranchName}
+              {canSwitchBranch && <ChevronDown className="h-3 w-3 text-neutral-400" strokeWidth={2} />}
+            </button>
+            {branchMenuOpen && canSwitchBranch && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setBranchMenuOpen(false)} />
+                <div className="absolute left-4 right-4 top-full z-40 mt-1 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-lg">
+                  {branches.map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => {
+                        setActiveBranchId(b.id);
+                        setBranchMenuOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm hover:bg-neutral-50"
+                    >
+                      <span className="min-w-0 flex-1 truncate">{b.name}</span>
+                      {b.id === activeBranchId && (
+                        <Check className="h-4 w-4 shrink-0 text-brand-600" strokeWidth={2.5} />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
         <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
           {children}
         </div>

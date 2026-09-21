@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/client";
 import { baht, formatDateTime } from "@/lib/format";
 import { AccountAdjustment, CashShift } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
+import { useBranch } from "@/components/BranchProvider";
 
 export default function CashPage() {
   return (
@@ -25,6 +26,7 @@ export default function CashPage() {
 
 function CashPageContent() {
   const supabase = useMemo(() => createClient(), []);
+  const { activeBranchId } = useBranch();
   const [openShift, setOpenShift] = useState<CashShift | null | undefined>(undefined);
   const [history, setHistory] = useState<CashShift[]>([]);
   const [cashSales, setCashSales] = useState(0);
@@ -40,6 +42,7 @@ function CashPageContent() {
   const [openError, setOpenError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
+    if (!activeBranchId) return;
     setLoading(true);
     setLoadError(null);
     try {
@@ -48,11 +51,25 @@ function CashPageContent() {
           supabase
             .from("cash_shifts")
             .select("*")
+            .eq("branch_id", activeBranchId)
             .order("created_at", { ascending: false })
             .limit(30),
-          supabase.from("sales").select("total").eq("payment_method", "transfer").eq("status", "completed"),
-          supabase.from("expenses").select("amount").eq("payment_method", "transfer"),
-          supabase.from("account_adjustments").select("amount").eq("account", "transfer"),
+          supabase
+            .from("sales")
+            .select("total")
+            .eq("branch_id", activeBranchId)
+            .eq("payment_method", "transfer")
+            .eq("status", "completed"),
+          supabase
+            .from("expenses")
+            .select("amount")
+            .eq("branch_id", activeBranchId)
+            .eq("payment_method", "transfer"),
+          supabase
+            .from("account_adjustments")
+            .select("amount")
+            .eq("branch_id", activeBranchId)
+            .eq("account", "transfer"),
         ]);
       if (shiftsRes.error) throw shiftsRes.error;
       if (transferSalesRes.error) throw transferSalesRes.error;
@@ -75,12 +92,14 @@ function CashPageContent() {
           supabase
             .from("sales")
             .select("total")
+            .eq("branch_id", activeBranchId)
             .eq("payment_method", "cash")
             .eq("status", "completed")
             .gte("created_at", current.opened_at),
           supabase
             .from("expenses")
             .select("amount")
+            .eq("branch_id", activeBranchId)
             .eq("payment_method", "cash")
             .gte("created_at", current.opened_at),
           supabase
@@ -112,7 +131,7 @@ function CashPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, activeBranchId]);
 
   useEffect(() => {
     loadData();
@@ -134,6 +153,7 @@ function CashPageContent() {
     const { error } = await supabase.rpc("open_cash_shift", {
       p_opening_amount: amount,
       p_note: openForm.note.trim() || null,
+      p_branch_id: activeBranchId,
     });
     setOpening(false);
     if (error) {
@@ -533,6 +553,7 @@ function AdjustModal({
   onDone: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
+  const { activeBranchId } = useBranch();
   const [direction, setDirection] = useState<"add" | "subtract">("add");
   const [amountStr, setAmountStr] = useState("");
   const [reason, setReason] = useState("");
@@ -566,6 +587,7 @@ function AdjustModal({
         : await supabase.rpc("add_transfer_adjustment", {
             p_amount: signedAmount,
             p_reason: reason.trim(),
+            p_branch_id: activeBranchId,
           });
     setSaving(false);
     if (error) {

@@ -13,6 +13,7 @@ import {
 import { hasRole, PAYMENT_LABELS, SaleWithItems } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
 import { useProfile } from "@/components/ProfileProvider";
+import { useBranch } from "@/components/BranchProvider";
 
 type SaleRow = SaleWithItems & { dining_tables: { name: string } | null };
 
@@ -27,6 +28,7 @@ export default function SalesPage() {
 function SalesPageContent() {
   const supabase = useMemo(() => createClient(), []);
   const { profile } = useProfile();
+  const { activeBranchId } = useBranch();
   const isOwner = !!profile && hasRole(profile.role, "owner");
   const today = toDateInput(new Date());
   const [from, setFrom] = useState(today);
@@ -38,6 +40,7 @@ function SalesPageContent() {
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
 
   const loadSales = useCallback(async () => {
+    if (!activeBranchId) return;
     setLoading(true);
     setLoadError(null);
     try {
@@ -46,6 +49,7 @@ function SalesPageContent() {
       const { data, error } = await supabase
         .from("sales")
         .select("*, sale_items(*), dining_tables(name)")
+        .eq("branch_id", activeBranchId)
         .neq("status", "open")
         .gte("created_at", fromISO)
         .lte("created_at", toISO)
@@ -57,7 +61,7 @@ function SalesPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, from, to]);
+  }, [supabase, from, to, activeBranchId]);
 
   useEffect(() => {
     loadSales();

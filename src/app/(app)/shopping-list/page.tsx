@@ -5,6 +5,7 @@ import { AlertCircle, Plus, RefreshCw, ShoppingBasket, Trash2 } from "lucide-rea
 import { createClient } from "@/lib/supabase/client";
 import { ShoppingListItem } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
+import { useBranch } from "@/components/BranchProvider";
 
 export default function ShoppingListPage() {
   return (
@@ -16,6 +17,7 @@ export default function ShoppingListPage() {
 
 function ShoppingListPageContent() {
   const supabase = useMemo(() => createClient(), []);
+  const { activeBranchId } = useBranch();
   const [items, setItems] = useState<ShoppingListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -26,10 +28,12 @@ function ShoppingListPageContent() {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
+    if (!activeBranchId) return;
     setLoadError(null);
     const { data, error } = await supabase
       .from("shopping_list_items")
       .select("*")
+      .eq("branch_id", activeBranchId)
       .order("created_at", { ascending: false });
     if (error) {
       setLoadError(error.message);
@@ -37,7 +41,7 @@ function ShoppingListPageContent() {
       setItems((data as ShoppingListItem[]) ?? []);
     }
     setLoading(false);
-  }, [supabase]);
+  }, [supabase, activeBranchId]);
 
   useEffect(() => {
     loadData();
@@ -70,6 +74,7 @@ function ShoppingListPageContent() {
       name: name.trim(),
       note: note.trim() || null,
       created_by: user?.id ?? null,
+      branch_id: activeBranchId,
     });
     setAdding(false);
     if (error) {
@@ -117,7 +122,11 @@ function ShoppingListPageContent() {
 
   async function clearChecked() {
     if (!window.confirm("ล้างรายการที่ซื้อแล้วทั้งหมดออกจากลิสต์?")) return;
-    const { error } = await supabase.from("shopping_list_items").delete().eq("is_checked", true);
+    const { error } = await supabase
+      .from("shopping_list_items")
+      .delete()
+      .eq("is_checked", true)
+      .eq("branch_id", activeBranchId ?? "");
     if (error) {
       window.alert(`ล้างไม่สำเร็จ: ${error.message}`);
       return;

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatDateTime } from "@/lib/format";
 import { BusinessPlan } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
+import { useBranch } from "@/components/BranchProvider";
 
 export default function PlansPage() {
   return (
@@ -17,6 +18,7 @@ export default function PlansPage() {
 
 function PlansPageContent() {
   const supabase = useMemo(() => createClient(), []);
+  const { activeBranchId } = useBranch();
   const [items, setItems] = useState<BusinessPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -27,10 +29,12 @@ function PlansPageContent() {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
+    if (!activeBranchId) return;
     setLoadError(null);
     const { data, error } = await supabase
       .from("business_plans")
       .select("*")
+      .eq("branch_id", activeBranchId)
       .order("created_at", { ascending: false });
     if (error) {
       setLoadError(error.message);
@@ -38,7 +42,7 @@ function PlansPageContent() {
       setItems((data as BusinessPlan[]) ?? []);
     }
     setLoading(false);
-  }, [supabase]);
+  }, [supabase, activeBranchId]);
 
   useEffect(() => {
     loadData();
@@ -70,6 +74,7 @@ function PlansPageContent() {
       title: title.trim(),
       note: note.trim() || null,
       created_by: user?.id ?? null,
+      branch_id: activeBranchId,
     });
     setAdding(false);
     if (error) {

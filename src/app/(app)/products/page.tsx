@@ -18,6 +18,7 @@ import { compressImage } from "@/lib/image";
 import { Category, hasRole, Product, STOCK_GROUP_LABELS, StockGroup } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
 import { useProfile } from "@/components/ProfileProvider";
+import { useBranch } from "@/components/BranchProvider";
 
 type ProductForm = {
   name: string;
@@ -56,6 +57,7 @@ export default function ProductsPage() {
 function ProductsPageContent() {
   const supabase = useMemo(() => createClient(), []);
   const { profile } = useProfile();
+  const { activeBranchId } = useBranch();
   const isOwner = !!profile && hasRole(profile.role, "owner");
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -69,6 +71,7 @@ function ProductsPageContent() {
   const [view, setView] = useState<"list" | "stock">("list");
 
   const loadData = useCallback(async () => {
+    if (!activeBranchId) return;
     setLoading(true);
     setLoadError(null);
     try {
@@ -76,9 +79,14 @@ function ProductsPageContent() {
         supabase
           .from("products")
           .select("*")
+          .eq("branch_id", activeBranchId)
           .eq("is_active", true)
           .order("name"),
-        supabase.from("categories").select("*").order("position"),
+        supabase
+          .from("categories")
+          .select("*")
+          .eq("branch_id", activeBranchId)
+          .order("position"),
       ]);
       if (prodRes.error) throw prodRes.error;
       if (catRes.error) throw catRes.error;
@@ -89,7 +97,7 @@ function ProductsPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, activeBranchId]);
 
   useEffect(() => {
     loadData();
@@ -278,6 +286,7 @@ function ProductModal({
 }) {
   const supabase = useMemo(() => createClient(), []);
   const { profile } = useProfile();
+  const { activeBranchId } = useBranch();
   const isOwner = !!profile && hasRole(profile.role, "owner");
   const isManagerUp = !!profile && hasRole(profile.role, "manager");
   const [editorName, setEditorName] = useState<string | null>(null);
@@ -397,6 +406,7 @@ function ProductModal({
           low_stock_threshold: parseFloat(form.low_stock_threshold) || 0,
           stock_group: form.stock_group || null,
           image_url: form.image_url.trim() || null,
+          branch_id: activeBranchId,
         });
     if (error) {
       setError(`บันทึกไม่สำเร็จ: ${error.message}`);
@@ -735,6 +745,7 @@ function CategoryModal({
   onChanged: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
+  const { activeBranchId } = useBranch();
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -745,6 +756,7 @@ function CategoryModal({
     await supabase.from("categories").insert({
       name: name.trim(),
       position: categories.length + 1,
+      branch_id: activeBranchId,
     });
     setName("");
     setSaving(false);

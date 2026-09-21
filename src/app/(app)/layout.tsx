@@ -1,5 +1,6 @@
 import AppShell from "@/components/AppShell";
 import ProfileProvider from "@/components/ProfileProvider";
+import BranchProvider from "@/components/BranchProvider";
 import TableAlertProvider from "@/components/TableAlertProvider";
 
 export default function AppLayout({
@@ -7,9 +8,11 @@ export default function AppLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <ProfileProvider>
-      <TableAlertProvider>
-        <AppShell>{children}</AppShell>
-      </TableAlertProvider>
+      <BranchProvider>
+        <TableAlertProvider>
+          <AppShell>{children}</AppShell>
+        </TableAlertProvider>
+      </BranchProvider>
     </ProfileProvider>
   );
 }

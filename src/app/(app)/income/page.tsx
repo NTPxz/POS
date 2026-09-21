@@ -21,6 +21,7 @@ import {
   PaymentMethod,
 } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
+import { useBranch } from "@/components/BranchProvider";
 
 function startOfMonthInput(): string {
   const now = new Date();
@@ -37,6 +38,7 @@ export default function IncomePage() {
 
 function IncomePageContent() {
   const supabase = useMemo(() => createClient(), []);
+  const { activeBranchId } = useBranch();
   const today = toDateInput(new Date());
   const [from, setFrom] = useState(startOfMonthInput());
   const [to, setTo] = useState(today);
@@ -53,6 +55,7 @@ function IncomePageContent() {
   const [categoryId, setCategoryId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
+    if (!activeBranchId) return;
     setLoading(true);
     setLoadError(null);
     try {
@@ -60,11 +63,16 @@ function IncomePageContent() {
         supabase
           .from("income")
           .select("*, income_categories(name)")
+          .eq("branch_id", activeBranchId)
           .gte("income_date", from)
           .lte("income_date", to)
           .order("income_date", { ascending: false })
           .order("created_at", { ascending: false }),
-        supabase.from("income_categories").select("*").order("position"),
+        supabase
+          .from("income_categories")
+          .select("*")
+          .eq("branch_id", activeBranchId)
+          .order("position"),
       ]);
       if (incRes.error) throw incRes.error;
       if (catRes.error) throw catRes.error;
@@ -75,7 +83,7 @@ function IncomePageContent() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, from, to]);
+  }, [supabase, from, to, activeBranchId]);
 
   useEffect(() => {
     loadData();
@@ -418,6 +426,7 @@ function IncomeModal({
   onSaved: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
+  const { activeBranchId } = useBranch();
   const [form, setForm] = useState<IncomeForm>(
     income
       ? {
@@ -454,7 +463,9 @@ function IncomeModal({
     };
     const { error } = income
       ? await supabase.from("income").update(payload).eq("id", income.id)
-      : await supabase.from("income").insert(payload);
+      : await supabase
+          .from("income")
+          .insert({ ...payload, branch_id: activeBranchId });
     if (error) {
       setError(`บันทึกไม่สำเร็จ: ${error.message}`);
       setSaving(false);
@@ -580,6 +591,7 @@ function ManualSaleModal({
   onSaved: (total: number) => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
+  const { activeBranchId } = useBranch();
   const [form, setForm] = useState<ManualSaleForm>({
     amount: "",
     cost: "",
@@ -612,6 +624,7 @@ function ManualSaleModal({
       note: form.note.trim() || null,
       status: "completed",
       user_id: user?.id ?? null,
+      branch_id: activeBranchId,
       created_at: new Date(`${form.sale_date}T12:00:00`).toISOString(),
     });
     if (error) {
@@ -746,6 +759,7 @@ function IncomeCategoryModal({
   onChanged: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
+  const { activeBranchId } = useBranch();
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -756,6 +770,7 @@ function IncomeCategoryModal({
     await supabase.from("income_categories").insert({
       name: name.trim(),
       position: categories.length + 1,
+      branch_id: activeBranchId,
     });
     setName("");
     setSaving(false);

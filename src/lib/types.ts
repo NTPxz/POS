@@ -1,7 +1,16 @@
+export type Branch = {
+  id: string;
+  name: string;
+  position: number;
+  is_active: boolean;
+  created_at: string;
+};
+
 export type Category = {
   id: string;
   name: string;
   position: number;
+  branch_id: string;
   created_at: string;
 };
 
@@ -18,6 +27,7 @@ export type Product = {
   name: string;
   barcode: string | null;
   category_id: string | null;
+  branch_id: string;
   price: number;
   cost: number;
   stock: number;
@@ -41,6 +51,7 @@ export type Sale = {
   sale_number: number;
   table_id: string | null;
   queue_id: string | null;
+  branch_id: string;
   subtotal: number;
   discount: number;
   total: number;
@@ -68,6 +79,7 @@ export const SALE_ITEM_STATUS_LABELS: Record<SaleItemStatus, string> = {
 export type SaleItem = {
   id: string;
   sale_id: string;
+  branch_id: string;
   product_id: string | null;
   product_name: string;
   price: number;
@@ -95,12 +107,14 @@ export type ExpenseCategory = {
   id: string;
   name: string;
   position: number;
+  branch_id: string;
   created_at: string;
 };
 
 export type Expense = {
   id: string;
   category_id: string | null;
+  branch_id: string;
   title: string;
   amount: number;
   expense_date: string;
@@ -118,12 +132,14 @@ export type IncomeCategory = {
   id: string;
   name: string;
   position: number;
+  branch_id: string;
   created_at: string;
 };
 
 export type Income = {
   id: string;
   category_id: string | null;
+  branch_id: string;
   title: string;
   amount: number;
   income_date: string;
@@ -157,6 +173,7 @@ export type Profile = {
   full_name: string | null;
   phone: string | null;
   role: Role;
+  branch_id: string;
   created_at: string;
   updated_at: string;
 };
@@ -165,6 +182,7 @@ export type DiningTable = {
   id: string;
   name: string;
   position: number;
+  branch_id: string;
   is_active: boolean;
   created_at: string;
 };
@@ -173,6 +191,7 @@ export type QuickSaleQueue = {
   id: string;
   name: string;
   position: number;
+  branch_id: string;
   created_at: string;
 };
 
@@ -184,6 +203,7 @@ export type ActivityLog = {
   description: string;
   actor_id: string | null;
   actor_email: string | null;
+  branch_id: string;
   created_at: string;
 };
 
@@ -215,6 +235,7 @@ export type Promotion = {
   threshold_qty: number | null;
   discount_amount: number | null;
   is_active: boolean;
+  branch_id: string;
   created_at: string;
   updated_at: string;
 };
@@ -223,6 +244,7 @@ export type CashShiftStatus = "open" | "closed";
 
 export type CashShift = {
   id: string;
+  branch_id: string;
   opening_amount: number;
   opening_note: string | null;
   opened_by: string | null;
@@ -242,6 +264,7 @@ export type AccountType = "cash" | "transfer";
 export type AccountAdjustment = {
   id: string;
   account: AccountType;
+  branch_id: string;
   cash_shift_id: string | null;
   amount: number;
   reason: string;
@@ -252,6 +275,7 @@ export type AccountAdjustment = {
 export type Announcement = {
   id: string;
   message: string;
+  branch_id: string;
   created_by: string | null;
   created_at: string;
 };
@@ -261,6 +285,7 @@ export type ShoppingListItem = {
   name: string;
   note: string | null;
   is_checked: boolean;
+  branch_id: string;
   created_by: string | null;
   checked_by: string | null;
   checked_at: string | null;
@@ -272,6 +297,7 @@ export type BusinessPlan = {
   title: string;
   note: string | null;
   is_done: boolean;
+  branch_id: string;
   created_by: string | null;
   created_at: string;
   done_at: string | null;

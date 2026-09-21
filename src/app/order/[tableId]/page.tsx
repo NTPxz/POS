@@ -64,23 +64,39 @@ export default function CustomerOrderPage({
     setLoading(true);
     setLoadError(null);
     try {
-      const [tableRes, menuRes, catRes, promoRes] = await Promise.all([
+      const tableRes = await supabase
+        .from("dining_tables")
+        .select("*")
+        .eq("id", tableId)
+        .maybeSingle();
+      if (tableRes.error) throw tableRes.error;
+      const tableRow = (tableRes.data as DiningTable) ?? null;
+      setTable(tableRow);
+      if (!tableRow) {
+        setLoading(false);
+        return;
+      }
+
+      // กรองเมนู/หมวดหมู่/โปรโมชั่นให้ตรงสาขาของโต๊ะนี้เท่านั้น กันสินค้าอีกสาขาปนกัน
+      const [menuRes, catRes, promoRes] = await Promise.all([
         supabase
-          .from("dining_tables")
+          .from("public_menu")
           .select("*")
-          .eq("id", tableId)
-          .maybeSingle(),
-        supabase.from("public_menu").select("*").order("name"),
-        supabase.from("categories").select("*").order("position"),
+          .eq("branch_id", tableRow.branch_id)
+          .order("name"),
+        supabase
+          .from("categories")
+          .select("*")
+          .eq("branch_id", tableRow.branch_id)
+          .order("position"),
         supabase
           .from("promotions")
           .select("*, promotion_products(product_id)")
+          .eq("branch_id", tableRow.branch_id)
           .eq("is_active", true),
       ]);
-      if (tableRes.error) throw tableRes.error;
       if (menuRes.error) throw menuRes.error;
       if (catRes.error) throw catRes.error;
-      setTable((tableRes.data as DiningTable) ?? null);
       setProducts((menuRes.data as Product[]) ?? []);
       setCategories((catRes.data as Category[]) ?? []);
       setPromotions(

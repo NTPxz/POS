@@ -20,6 +20,7 @@ import {
   SaleWithItems,
 } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
+import { useBranch } from "@/components/BranchProvider";
 
 const PAYMENT_ICONS: Record<PaymentMethod, typeof Banknote> = {
   cash: Banknote,
@@ -60,6 +61,7 @@ export default function DashboardPage() {
 
 function DashboardPageContent() {
   const supabase = useMemo(() => createClient(), []);
+  const { activeBranchId } = useBranch();
   const [period, setPeriod] = useState<Period>("today");
   const [sales, setSales] = useState<SaleWithItems[]>([]);
   const [expenses, setExpenses] = useState<ExpenseWithCategory[]>([]);
@@ -69,6 +71,7 @@ function DashboardPageContent() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
+    if (!activeBranchId) return;
     setLoading(true);
     setLoadError(null);
     try {
@@ -80,22 +83,26 @@ function DashboardPageContent() {
         supabase
           .from("sales")
           .select("*, sale_items(*)")
+          .eq("branch_id", activeBranchId)
           .eq("status", "completed")
           .gte("created_at", fromISO)
           .order("created_at"),
         supabase
           .from("expenses")
           .select("*, expense_categories(name)")
+          .eq("branch_id", activeBranchId)
           .gte("expense_date", fromDate)
           .order("expense_date"),
         supabase
           .from("income")
           .select("*, income_categories(name)")
+          .eq("branch_id", activeBranchId)
           .gte("income_date", fromDate)
           .order("income_date"),
         supabase
           .from("products")
           .select("*")
+          .eq("branch_id", activeBranchId)
           .eq("is_active", true)
           .eq("track_stock", true)
           .order("stock"),
@@ -114,7 +121,7 @@ function DashboardPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, period]);
+  }, [supabase, period, activeBranchId]);
 
   useEffect(() => {
     loadData();

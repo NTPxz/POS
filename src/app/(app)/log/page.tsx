@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatDateTime, formatNumber, toDateInput } from "@/lib/format";
 import { ActivityLog } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
+import { useBranch } from "@/components/BranchProvider";
 
 export default function LogPage() {
   return (
@@ -42,6 +43,7 @@ function startOfMonthInput(): string {
 
 function LogPageContent() {
   const supabase = useMemo(() => createClient(), []);
+  const { activeBranchId } = useBranch();
   const today = toDateInput(new Date());
   const [from, setFrom] = useState(startOfMonthInput());
   const [to, setTo] = useState(today);
@@ -51,6 +53,7 @@ function LogPageContent() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadLogs = useCallback(async () => {
+    if (!activeBranchId) return;
     setLoading(true);
     setLoadError(null);
     try {
@@ -59,6 +62,7 @@ function LogPageContent() {
       const { data, error } = await supabase
         .from("activity_log")
         .select("*")
+        .eq("branch_id", activeBranchId)
         .gte("created_at", fromISO)
         .lte("created_at", toISO)
         .order("created_at", { ascending: false })
@@ -70,7 +74,7 @@ function LogPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, from, to]);
+  }, [supabase, from, to, activeBranchId]);
 
   useEffect(() => {
     loadLogs();

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Bell, Pencil, Receipt, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/components/ProfileProvider";
+import { useBranch } from "@/components/BranchProvider";
 import { useTableAlert } from "@/components/TableAlertProvider";
 import { PENDING_ORDER_REMINDER_MS } from "@/lib/constants";
 import { hasRole } from "@/lib/types";
@@ -26,6 +27,7 @@ const STALE_CHECK_INTERVAL_MS = 10 * 1000;
 export default function OrderNotifications() {
   const supabase = useMemo(() => createClient(), []);
   const { profile } = useProfile();
+  const { activeBranchId } = useBranch();
   const { triggerAlert, goToTables } = useTableAlert();
   const [toasts, setToasts] = useState<Toast[]>([]);
   const { play: playMelody, stop: stopChime } = useChime();
@@ -77,10 +79,12 @@ export default function OrderNotifications() {
   );
 
   const checkStalePending = useCallback(async () => {
+    if (!activeBranchId) return;
     const cutoff = new Date(Date.now() - PENDING_ORDER_REMINDER_MS).toISOString();
     const { data } = await supabase
       .from("sale_items")
       .select("id, sales!inner(status, dining_tables(name))")
+      .eq("branch_id", activeBranchId)
       .eq("status", "pending")
       .eq("sales.status", "open")
       .not("sales.table_id", "is", null)
@@ -110,7 +114,7 @@ export default function OrderNotifications() {
       message: summary,
     });
     playChime("reminder");
-  }, [supabase, pushToast, playChime]);
+  }, [supabase, pushToast, playChime, activeBranchId]);
 
   useEffect(() => {
     if (!profile) return;
@@ -154,7 +158,9 @@ export default function OrderNotifications() {
             product_name: string;
             quantity: number;
             note: string | null;
+            branch_id: string;
           };
+          if (row.branch_id !== activeBranchId) return;
           let entry = pendingRef.current.get(row.sale_id);
           if (!entry) {
             entry = { saleId: row.sale_id, items: [], timer: null };
@@ -174,7 +180,9 @@ export default function OrderNotifications() {
             status: string;
             bill_requested_at: string | null;
             table_id: string | null;
+            branch_id: string;
           };
+          if (row.branch_id !== activeBranchId) return;
           if (row.status !== "open" || !row.bill_requested_at) return;
           if (notifiedBillRef.current.has(row.id)) return;
           notifiedBillRef.current.add(row.id);
@@ -194,7 +202,7 @@ export default function OrderNotifications() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [profile, supabase, flushOrder, playChime, pushToast, resolveTable]);
+  }, [profile, supabase, flushOrder, playChime, pushToast, resolveTable, activeBranchId]);
 
   // คำขอแก้ไข/ลบรายการจากพนักงาน — เจ้าของร้านเท่านั้นที่เห็น (RLS ของ order_edit_requests ก็กันไว้อีกชั้น)
   useEffect(() => {
@@ -211,7 +219,9 @@ export default function OrderNotifications() {
             product_name: string;
             old_quantity: number;
             new_quantity: number;
+            branch_id: string;
           };
+          if (row.branch_id !== activeBranchId) return;
           const table = await resolveTable(row.sale_id);
           const isDelete = Number(row.new_quantity) <= 0;
           pushToast({
@@ -231,7 +241,7 @@ export default function OrderNotifications() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [profile, supabase, playChime, pushToast, resolveTable]);
+  }, [profile, supabase, playChime, pushToast, resolveTable, activeBranchId]);
 
   if (!profile) return null;
 

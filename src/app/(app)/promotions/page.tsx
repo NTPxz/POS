@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { baht } from "@/lib/format";
 import { Product, Promotion, PromotionType } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
+import { useBranch } from "@/components/BranchProvider";
 
 type PromotionRow = Promotion & {
   promotion_products: { product_id: string }[];
@@ -32,6 +33,7 @@ export default function PromotionsPage() {
 
 function PromotionsPageContent() {
   const supabase = useMemo(() => createClient(), []);
+  const { activeBranchId } = useBranch();
   const [promotions, setPromotions] = useState<PromotionRow[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +48,7 @@ function PromotionsPageContent() {
   );
 
   const loadData = useCallback(async () => {
+    if (!activeBranchId) return;
     setLoading(true);
     setLoadError(null);
     try {
@@ -53,8 +56,14 @@ function PromotionsPageContent() {
         supabase
           .from("promotions")
           .select("*, promotion_products(product_id)")
+          .eq("branch_id", activeBranchId)
           .order("created_at", { ascending: false }),
-        supabase.from("products").select("*").eq("is_active", true).order("name"),
+        supabase
+          .from("products")
+          .select("*")
+          .eq("branch_id", activeBranchId)
+          .eq("is_active", true)
+          .order("name"),
       ]);
       if (promoRes.error) throw promoRes.error;
       if (prodRes.error) throw prodRes.error;
@@ -65,7 +74,7 @@ function PromotionsPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, activeBranchId]);
 
   useEffect(() => {
     loadData();
@@ -234,6 +243,7 @@ function PromotionModal({
   onSaved: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
+  const { activeBranchId } = useBranch();
   const [name, setName] = useState(promotion?.name ?? "");
   const [type, setType] = useState<PromotionType>(promotion?.type ?? "buy_x_get_fixed_discount");
   const [thresholdQty, setThresholdQty] = useState(
@@ -310,7 +320,7 @@ function PromotionModal({
     } else {
       const { data, error: insertErr } = await supabase
         .from("promotions")
-        .insert(payload)
+        .insert({ ...payload, branch_id: activeBranchId })
         .select("id")
         .single();
       if (insertErr || !data) {

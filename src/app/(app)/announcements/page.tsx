@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatDateTime } from "@/lib/format";
 import { Announcement } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
+import { useBranch } from "@/components/BranchProvider";
 
 export default function AnnouncementsPage() {
   return (
@@ -17,6 +18,7 @@ export default function AnnouncementsPage() {
 
 function AnnouncementsPageContent() {
   const supabase = useMemo(() => createClient(), []);
+  const { activeBranchId } = useBranch();
   const [history, setHistory] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -26,12 +28,14 @@ function AnnouncementsPageContent() {
   const [sentMsg, setSentMsg] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
+    if (!activeBranchId) return;
     setLoading(true);
     setLoadError(null);
     try {
       const { data, error } = await supabase
         .from("announcements")
         .select("*")
+        .eq("branch_id", activeBranchId)
         .order("created_at", { ascending: false })
         .limit(30);
       if (error) throw error;
@@ -41,7 +45,7 @@ function AnnouncementsPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, activeBranchId]);
 
   useEffect(() => {
     loadData();
@@ -52,7 +56,9 @@ function AnnouncementsPageContent() {
     if (!message.trim()) return;
     setSending(true);
     setSendError(null);
-    const { error } = await supabase.from("announcements").insert({ message: message.trim() });
+    const { error } = await supabase
+      .from("announcements")
+      .insert({ message: message.trim(), branch_id: activeBranchId });
     setSending(false);
     if (error) {
       setSendError(`ส่งประกาศไม่สำเร็จ: ${error.message}`);

@@ -26,6 +26,7 @@ import {
 import ProductPicker from "@/components/pos/ProductPicker";
 import PaymentFields from "@/components/pos/PaymentFields";
 import { useProfile } from "@/components/ProfileProvider";
+import { useBranch } from "@/components/BranchProvider";
 
 export default function QuickSaleView({
   products,
@@ -38,6 +39,7 @@ export default function QuickSaleView({
 }) {
   const supabase = useMemo(() => createClient(), []);
   const { profile } = useProfile();
+  const { activeBranchId } = useBranch();
   const isManagerUp = !!profile && hasRole(profile.role, "manager");
   const [queues, setQueues] = useState<QuickSaleQueue[]>([]);
   const [openSales, setOpenSales] = useState<Map<string, SaleWithItems>>(new Map());
@@ -56,14 +58,20 @@ export default function QuickSaleView({
 
   // โหลดคิว + บิล "open" ของแต่ละคิว — เก็บลง DB จริงกันตะกร้าหายตอนปิด/ปัดแอปออก
   const loadQueues = useCallback(async (silent = false) => {
+    if (!activeBranchId) return;
     if (!silent) setLoading(true);
     setLoadError(null);
     try {
       const [queuesRes, salesRes] = await Promise.all([
-        supabase.from("quick_sale_queues").select("*").order("position"),
+        supabase
+          .from("quick_sale_queues")
+          .select("*")
+          .eq("branch_id", activeBranchId)
+          .order("position"),
         supabase
           .from("sales")
           .select("*, sale_items(*)")
+          .eq("branch_id", activeBranchId)
           .eq("status", "open")
           .not("queue_id", "is", null)
           .order("created_at", { ascending: true, foreignTable: "sale_items" }),
@@ -85,7 +93,7 @@ export default function QuickSaleView({
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, activeBranchId]);
 
   useEffect(() => {
     loadQueues();
@@ -140,8 +148,9 @@ export default function QuickSaleView({
   }, [supabase, openSales, isManagerUp]);
 
   useEffect(() => {
+    if (!activeBranchId) return;
     supabase
-      .rpc("get_product_sales_counts", { p_days: 30 })
+      .rpc("get_product_sales_counts", { p_branch_id: activeBranchId, p_days: 30 })
       .then(({ data }) => {
         const map = new Map<string, number>();
         for (const row of (data as { product_id: string; qty: number }[]) ?? []) {
@@ -149,7 +158,7 @@ export default function QuickSaleView({
         }
         setSalesRank(map);
       });
-  }, [supabase]);
+  }, [supabase, activeBranchId]);
 
   // สินค้าขายดี (ขายเยอะสุดใน 30 วันล่าสุด) อยู่บนสุด — ที่เหลือเรียงตามลำดับเดิม
   const sortedProducts = useMemo(() => {

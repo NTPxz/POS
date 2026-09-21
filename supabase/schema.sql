@@ -2198,3 +2198,1473 @@ $$;
 
 revoke execute on function public.update_product from public, anon;
 grant execute on function public.update_product to authenticated;
+
+-- ============================================================
+-- ระบบหลายสาขา (Multi-branch): แยกข้อมูลแทบทุกตารางตามสาขา
+-- staff/manager เห็น/แก้ไขได้เฉพาะสาขาตัวเอง (บังคับที่ RLS ระดับ DB กันหลุดจริงจัง)
+-- เจ้าของร้านเห็น/จัดการได้ทุกสาขาเสมอ (is_owner() bypass เหมือนเดิม) ฝั่งแอปมีตัว
+-- เลือก "สาขาที่กำลังทำงานอยู่" (active branch) ไว้กรอง/กำหนดค่าตอนเพิ่มข้อมูลใหม่
+-- ข้อมูลเดิมทั้งหมดก่อน migration นี้ถูกกำหนดให้เป็นของ "สาขา 1 สองแคว"
+-- ============================================================
+create table if not exists public.branches (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  position int not null default 0,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+alter table public.branches enable row level security;
+
+drop policy if exists "authenticated read branches" on public.branches;
+create policy "authenticated read branches" on public.branches
+  for select to authenticated using (true);
+
+drop policy if exists "owner manage branches" on public.branches;
+create policy "owner manage branches" on public.branches
+  for all to authenticated using (public.is_owner()) with check (public.is_owner());
+
+insert into public.branches (name, position)
+select v.name, v.position
+from (values ('สาขา 1 สองแคว', 1), ('สาขา 2 หนองตุ้ม', 2)) as v(name, position)
+where not exists (select 1 from public.branches);
+
+-- โปรไฟล์ผู้ใช้: สาขาหลัก/สาขาที่ auto พาเข้าเมื่อเปิดแอป (เจ้าของร้านตั้งให้แต่ละคนได้)
+alter table public.profiles add column if not exists branch_id uuid references public.branches (id);
+update public.profiles set branch_id = (select id from public.branches where position = 1)
+  where branch_id is null;
+alter table public.profiles alter column branch_id set not null;
+
+-- ฟังก์ชันช่วย: คืนสาขาหลักของผู้ใช้ปัจจุบัน ใช้เป็นเงื่อนไข RLS ทั่วทั้งระบบ
+create or replace function public.my_branch_id()
+returns uuid
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select branch_id from public.profiles where id = auth.uid();
+$$;
+
+revoke execute on function public.my_branch_id from public, anon;
+grant execute on function public.my_branch_id to authenticated;
+
+-- เพิ่ม branch_id ให้ตารางข้อมูลธุรกิจที่เหลือทั้งหมด + backfill ข้อมูลเดิมเป็นสาขา 1 (สองแคว)
+alter table public.categories add column if not exists branch_id uuid references public.branches (id);
+update public.categories set branch_id = (select id from public.branches where position = 1) where branch_id is null;
+alter table public.categories alter column branch_id set not null;
+create index if not exists idx_categories_branch on public.categories (branch_id);
+
+alter table public.products add column if not exists branch_id uuid references public.branches (id);
+update public.products set branch_id = (select id from public.branches where position = 1) where branch_id is null;
+alter table public.products alter column branch_id set not null;
+create index if not exists idx_products_branch on public.products (branch_id);
+
+alter table public.sales add column if not exists branch_id uuid references public.branches (id);
+update public.sales set branch_id = (select id from public.branches where position = 1) where branch_id is null;
+alter table public.sales alter column branch_id set not null;
+create index if not exists idx_sales_branch on public.sales (branch_id);
+
+-- sale_items เก็บ branch_id ตรงๆ (denormalize จาก sales) แทนที่จะ join ทุกครั้ง —
+-- ทำให้ RLS/realtime filter ง่ายและเร็วขึ้น ค่าตั้งครั้งเดียวตอนสร้างแล้วไม่มีวันเปลี่ยน
+alter table public.sale_items add column if not exists branch_id uuid references public.branches (id);
+update public.sale_items set branch_id = (select id from public.branches where position = 1) where branch_id is null;
+alter table public.sale_items alter column branch_id set not null;
+create index if not exists idx_sale_items_branch on public.sale_items (branch_id);
+
+alter table public.dining_tables add column if not exists branch_id uuid references public.branches (id);
+update public.dining_tables set branch_id = (select id from public.branches where position = 1) where branch_id is null;
+alter table public.dining_tables alter column branch_id set not null;
+create index if not exists idx_dining_tables_branch on public.dining_tables (branch_id);
+
+alter table public.quick_sale_queues add column if not exists branch_id uuid references public.branches (id);
+update public.quick_sale_queues set branch_id = (select id from public.branches where position = 1) where branch_id is null;
+alter table public.quick_sale_queues alter column branch_id set not null;
+create index if not exists idx_quick_sale_queues_branch on public.quick_sale_queues (branch_id);
+
+alter table public.promotions add column if not exists branch_id uuid references public.branches (id);
+update public.promotions set branch_id = (select id from public.branches where position = 1) where branch_id is null;
+alter table public.promotions alter column branch_id set not null;
+create index if not exists idx_promotions_branch on public.promotions (branch_id);
+
+alter table public.order_edit_requests add column if not exists branch_id uuid references public.branches (id);
+update public.order_edit_requests set branch_id = (select id from public.branches where position = 1) where branch_id is null;
+alter table public.order_edit_requests alter column branch_id set not null;
+
+alter table public.expense_categories add column if not exists branch_id uuid references public.branches (id);
+update public.expense_categories set branch_id = (select id from public.branches where position = 1) where branch_id is null;
+alter table public.expense_categories alter column branch_id set not null;
+-- ชื่อหมวดหมู่ซ้ำกันได้ข้ามสาขา (เดิม unique ทั้งระบบ) เปลี่ยนเป็น unique ต่อสาขาแทน
+alter table public.expense_categories drop constraint if exists expense_categories_name_key;
+create unique index if not exists expense_categories_branch_name_idx on public.expense_categories (branch_id, name);
+
+alter table public.expenses add column if not exists branch_id uuid references public.branches (id);
+update public.expenses set branch_id = (select id from public.branches where position = 1) where branch_id is null;
+alter table public.expenses alter column branch_id set not null;
+create index if not exists idx_expenses_branch on public.expenses (branch_id);
+
+alter table public.income_categories add column if not exists branch_id uuid references public.branches (id);
+update public.income_categories set branch_id = (select id from public.branches where position = 1) where branch_id is null;
+alter table public.income_categories alter column branch_id set not null;
+alter table public.income_categories drop constraint if exists income_categories_name_key;
+create unique index if not exists income_categories_branch_name_idx on public.income_categories (branch_id, name);
+
+alter table public.income add column if not exists branch_id uuid references public.branches (id);
+update public.income set branch_id = (select id from public.branches where position = 1) where branch_id is null;
+alter table public.income alter column branch_id set not null;
+create index if not exists idx_income_branch on public.income (branch_id);
+
+alter table public.cash_shifts add column if not exists branch_id uuid references public.branches (id);
+update public.cash_shifts set branch_id = (select id from public.branches where position = 1) where branch_id is null;
+alter table public.cash_shifts alter column branch_id set not null;
+create index if not exists idx_cash_shifts_branch on public.cash_shifts (branch_id);
+-- กะเงินสด "เปิดอยู่" พร้อมกันได้ 1 กะต่อสาขา (เดิมจำกัดแค่ 1 กะทั้งระบบ ใช้ไม่ได้แล้วเมื่อมี 2 สาขา)
+drop index if exists idx_cash_shifts_one_open;
+create unique index if not exists idx_cash_shifts_one_open_per_branch on public.cash_shifts (branch_id) where status = 'open';
+
+alter table public.account_adjustments add column if not exists branch_id uuid references public.branches (id);
+update public.account_adjustments set branch_id = (select id from public.branches where position = 1) where branch_id is null;
+alter table public.account_adjustments alter column branch_id set not null;
+create index if not exists idx_account_adjustments_branch on public.account_adjustments (branch_id);
+
+alter table public.announcements add column if not exists branch_id uuid references public.branches (id);
+update public.announcements set branch_id = (select id from public.branches where position = 1) where branch_id is null;
+alter table public.announcements alter column branch_id set not null;
+create index if not exists idx_announcements_branch on public.announcements (branch_id);
+
+alter table public.shopping_list_items add column if not exists branch_id uuid references public.branches (id);
+update public.shopping_list_items set branch_id = (select id from public.branches where position = 1) where branch_id is null;
+alter table public.shopping_list_items alter column branch_id set not null;
+create index if not exists idx_shopping_list_items_branch on public.shopping_list_items (branch_id);
+
+alter table public.business_plans add column if not exists branch_id uuid references public.branches (id);
+update public.business_plans set branch_id = (select id from public.branches where position = 1) where branch_id is null;
+alter table public.business_plans alter column branch_id set not null;
+create index if not exists idx_business_plans_branch on public.business_plans (branch_id);
+
+alter table public.activity_log add column if not exists branch_id uuid references public.branches (id);
+update public.activity_log set branch_id = (select id from public.branches where position = 1) where branch_id is null;
+alter table public.activity_log alter column branch_id set not null;
+create index if not exists idx_activity_log_branch on public.activity_log (branch_id);
+
+-- ============================================================
+-- log_action / log_activity: เพิ่ม branch_id ให้ activity_log ทุกแถว
+-- ============================================================
+alter table public.activity_log add column if not exists branch_id uuid references public.branches (id);
+
+drop function if exists public.log_action(text, text, text, text);
+
+create or replace function public.log_action(
+  p_action text,
+  p_table text,
+  p_record_id text,
+  p_description text,
+  p_branch_id uuid
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.activity_log (action, table_name, record_id, description, actor_id, actor_email, branch_id)
+  values (
+    p_action, p_table, p_record_id, p_description,
+    auth.uid(), (select email from auth.users where id = auth.uid()),
+    p_branch_id
+  );
+end;
+$$;
+
+revoke execute on function public.log_action from public, anon, authenticated;
+
+create or replace function public.log_activity()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_old jsonb;
+  v_new jsonb;
+  v_record_id text;
+  v_desc text;
+  v_branch_id uuid;
+begin
+  v_old := case when TG_OP <> 'INSERT' then to_jsonb(old) else null end;
+  v_new := case when TG_OP <> 'DELETE' then to_jsonb(new) else null end;
+  v_record_id := coalesce(v_new->>'id', v_old->>'id');
+  v_branch_id := coalesce((v_new->>'branch_id')::uuid, (v_old->>'branch_id')::uuid);
+
+  v_desc := case TG_TABLE_NAME
+    when 'products' then case TG_OP
+      when 'INSERT' then format('เพิ่มสินค้า "%s" ราคา %s บาท', v_new->>'name', v_new->>'price')
+      when 'UPDATE' then format('แก้ไขสินค้า "%s"', v_new->>'name')
+      when 'DELETE' then format('ลบสินค้า "%s"', v_old->>'name')
+    end
+    when 'categories' then case TG_OP
+      when 'INSERT' then format('เพิ่มหมวดหมู่สินค้า "%s"', v_new->>'name')
+      when 'UPDATE' then format('แก้ไขหมวดหมู่สินค้า "%s"', v_new->>'name')
+      when 'DELETE' then format('ลบหมวดหมู่สินค้า "%s"', v_old->>'name')
+    end
+    when 'expenses' then case TG_OP
+      when 'INSERT' then format('บันทึกรายจ่าย "%s" %s บาท', v_new->>'title', v_new->>'amount')
+      when 'UPDATE' then format('แก้ไขรายจ่าย "%s"', v_new->>'title')
+      when 'DELETE' then format('ลบรายจ่าย "%s" %s บาท', v_old->>'title', v_old->>'amount')
+    end
+    when 'expense_categories' then case TG_OP
+      when 'INSERT' then format('เพิ่มหมวดหมู่รายจ่าย "%s"', v_new->>'name')
+      when 'DELETE' then format('ลบหมวดหมู่รายจ่าย "%s"', v_old->>'name')
+      else format('แก้ไขหมวดหมู่รายจ่าย "%s"', v_new->>'name')
+    end
+    when 'income' then case TG_OP
+      when 'INSERT' then format('บันทึกรายได้ "%s" %s บาท', v_new->>'title', v_new->>'amount')
+      when 'UPDATE' then format('แก้ไขรายได้ "%s"', v_new->>'title')
+      when 'DELETE' then format('ลบรายได้ "%s" %s บาท', v_old->>'title', v_old->>'amount')
+    end
+    when 'income_categories' then case TG_OP
+      when 'INSERT' then format('เพิ่มหมวดหมู่รายได้ "%s"', v_new->>'name')
+      when 'DELETE' then format('ลบหมวดหมู่รายได้ "%s"', v_old->>'name')
+      else format('แก้ไขหมวดหมู่รายได้ "%s"', v_new->>'name')
+    end
+    when 'dining_tables' then case TG_OP
+      when 'INSERT' then format('เพิ่มโต๊ะ "%s"', v_new->>'name')
+      when 'DELETE' then format('ลบโต๊ะ "%s"', v_old->>'name')
+      else format('แก้ไขโต๊ะ "%s"', v_new->>'name')
+    end
+    when 'quick_sale_queues' then format('แก้ไขชื่อคิวขายด่วนเป็น "%s"', v_new->>'name')
+    when 'profiles' then case TG_OP
+      when 'UPDATE' then format('แก้ไขข้อมูลพนักงาน %s (role: %s)', coalesce(v_new->>'email', v_new->>'phone'), v_new->>'role')
+      else format('บัญชีพนักงานใหม่ %s', coalesce(v_new->>'email', v_new->>'phone'))
+    end
+    else format('%s %s', TG_OP, TG_TABLE_NAME)
+  end;
+
+  insert into public.activity_log (action, table_name, record_id, description, actor_id, actor_email, branch_id)
+  values (lower(TG_OP), TG_TABLE_NAME, v_record_id, v_desc, auth.uid(), (select email from auth.users where id = auth.uid()), v_branch_id);
+
+  if TG_OP = 'DELETE' then return old; end if;
+  return new;
+end;
+$$;
+
+-- ============================================================
+-- ข้อมูลตั้งต้นสำหรับสาขา 2 (หนองตุ้ม) — ชุดเดียวกับที่สาขา 1 เคยได้ตอนติดตั้งระบบครั้งแรก
+-- สินค้า/เมนูจริงไม่ auto สร้างให้ (เจ้าของร้านต้องกรอกเองเพราะสต๊อก/ราคาแต่ละสาขาไม่เหมือนกัน)
+-- ============================================================
+insert into public.categories (name, position, branch_id)
+select v.name, v.position, (select id from public.branches where position = 2)
+from (values ('เครื่องดื่ม', 1), ('อาหาร', 2), ('ขนม', 3)) as v(name, position)
+where not exists (
+  select 1 from public.categories where branch_id = (select id from public.branches where position = 2)
+);
+
+insert into public.dining_tables (name, position, branch_id)
+select v.name, v.position, (select id from public.branches where position = 2)
+from (values ('โต๊ะ 1', 1), ('โต๊ะ 2', 2), ('โต๊ะ 3', 3), ('โต๊ะ 4', 4), ('โต๊ะ 5', 5)) as v(name, position)
+where not exists (
+  select 1 from public.dining_tables where branch_id = (select id from public.branches where position = 2)
+);
+
+insert into public.quick_sale_queues (name, position, branch_id)
+select 'คิว ' || n, n, (select id from public.branches where position = 2)
+from generate_series(1, 5) as n
+where not exists (
+  select 1 from public.quick_sale_queues where branch_id = (select id from public.branches where position = 2)
+);
+
+insert into public.expense_categories (name, position, branch_id)
+select v.name, v.position, (select id from public.branches where position = 2)
+from (values
+  ('ต้นทุนเริ่มต้น/เงินลงทุน', 1), ('วัตถุดิบ', 2), ('ค่าเช่าร้าน', 3), ('ค่าน้ำ-ค่าไฟ', 4),
+  ('เงินเดือน/ค่าแรง', 5), ('ค่าขนส่ง', 6), ('การตลาด/โฆษณา', 7), ('อื่นๆ', 8)
+) as v(name, position)
+where not exists (
+  select 1 from public.expense_categories where branch_id = (select id from public.branches where position = 2)
+);
+
+insert into public.income_categories (name, position, branch_id)
+select v.name, v.position, (select id from public.branches where position = 2)
+from (values
+  ('รายได้จากการขายอื่นๆ', 1), ('เงินลงทุนเพิ่ม', 2), ('รายได้ค่าบริการ', 3),
+  ('เงินคืน/ส่วนลดจากซัพพลายเออร์', 4), ('รายได้อื่นๆ', 5)
+) as v(name, position)
+where not exists (
+  select 1 from public.income_categories where branch_id = (select id from public.branches where position = 2)
+);
+
+-- ============================================================
+-- RLS: บังคับขอบเขตสาขาให้ตารางที่พนักงาน/ผู้จัดการเข้าถึงตรงๆ (ที่เดิมเปิดกว้าง using(true))
+-- ตารางที่เป็น owner-only อยู่แล้ว (expenses, income, cash_shifts, account_adjustments,
+-- business_plans, activity_log, order_edit_requests ฯลฯ) ไม่ต้องแก้ policy — is_owner()
+-- ให้สิทธิ์ครบทุกสาขาอยู่แล้วตามดีไซน์ (เจ้าของร้านเห็น/จัดการได้ทุกสาขา)
+-- ============================================================
+drop policy if exists "select categories" on public.categories;
+drop policy if exists "insert categories" on public.categories;
+drop policy if exists "update categories" on public.categories;
+drop policy if exists "delete categories" on public.categories;
+create policy "anon read categories" on public.categories
+  for select to anon using (true);
+create policy "select categories" on public.categories
+  for select to authenticated using (branch_id = public.my_branch_id() or public.is_owner());
+create policy "insert categories" on public.categories
+  for insert to authenticated with check (branch_id = public.my_branch_id() or public.is_owner());
+create policy "update categories" on public.categories
+  for update to authenticated using (branch_id = public.my_branch_id() or public.is_owner())
+  with check (branch_id = public.my_branch_id() or public.is_owner());
+create policy "delete categories" on public.categories
+  for delete to authenticated using (branch_id = public.my_branch_id() or public.is_owner());
+
+drop policy if exists "select products" on public.products;
+drop policy if exists "insert products" on public.products;
+drop policy if exists "update products" on public.products;
+drop policy if exists "delete products" on public.products;
+create policy "select products" on public.products
+  for select to authenticated using (branch_id = public.my_branch_id() or public.is_owner());
+create policy "insert products" on public.products
+  for insert to authenticated with check (branch_id = public.my_branch_id() or public.is_owner());
+create policy "update products" on public.products
+  for update to authenticated using (branch_id = public.my_branch_id() or public.is_owner())
+  with check (branch_id = public.my_branch_id() or public.is_owner());
+create policy "delete products" on public.products
+  for delete to authenticated using (branch_id = public.my_branch_id() or public.is_owner());
+
+drop policy if exists "authenticated full access" on public.sales;
+create policy "authenticated full access" on public.sales
+  for all to authenticated
+  using (branch_id = public.my_branch_id() or public.is_owner())
+  with check (branch_id = public.my_branch_id() or public.is_owner());
+
+drop policy if exists "authenticated full access" on public.sale_items;
+create policy "authenticated full access" on public.sale_items
+  for all to authenticated
+  using (branch_id = public.my_branch_id() or public.is_owner())
+  with check (branch_id = public.my_branch_id() or public.is_owner());
+
+-- dining_tables: anon (ลูกค้าสแกน QR) ยังอ่านได้ทุกแถวเหมือนเดิม (จำเป็นสำหรับหน้าสั่งอาหาร)
+-- ส่วน insert/update/delete เป็น owner-only อยู่แล้วไม่ต้องแก้ (เจ้าของร้านจัดการได้ทุกสาขา)
+drop policy if exists "select tables" on public.dining_tables;
+create policy "anon read tables" on public.dining_tables
+  for select to anon using (true);
+create policy "select tables" on public.dining_tables
+  for select to authenticated using (branch_id = public.my_branch_id() or public.is_owner());
+
+drop policy if exists "select queues" on public.quick_sale_queues;
+drop policy if exists "rename queues" on public.quick_sale_queues;
+create policy "select queues" on public.quick_sale_queues
+  for select to authenticated using (branch_id = public.my_branch_id() or public.is_owner());
+create policy "rename queues" on public.quick_sale_queues
+  for update to authenticated using (branch_id = public.my_branch_id() or public.is_owner())
+  with check (branch_id = public.my_branch_id() or public.is_owner());
+
+drop policy if exists "authenticated read promotions" on public.promotions;
+create policy "authenticated read promotions" on public.promotions
+  for select to authenticated using (branch_id = public.my_branch_id() or public.is_owner());
+
+drop policy if exists "authenticated read promotion_products" on public.promotion_products;
+create policy "authenticated read promotion_products" on public.promotion_products
+  for select to authenticated using (
+    exists (
+      select 1 from public.promotions p
+      where p.id = promotion_id and (p.branch_id = public.my_branch_id() or public.is_owner())
+    )
+  );
+
+drop policy if exists "authenticated read announcements" on public.announcements;
+create policy "authenticated read announcements" on public.announcements
+  for select to authenticated using (branch_id = public.my_branch_id() or public.is_owner());
+
+drop policy if exists "authenticated full access" on public.shopping_list_items;
+create policy "authenticated full access" on public.shopping_list_items
+  for all to authenticated
+  using (branch_id = public.my_branch_id() or public.is_owner())
+  with check (branch_id = public.my_branch_id() or public.is_owner());
+
+-- ============================================================
+-- สมัครสมาชิกใหม่: ต้องมี branch_id เสมอ (default สาขา 1 — ฝั่งแอปจะอัปเดตให้ตรงกับที่
+-- เจ้าของร้านเลือกไว้ทันทีหลังสร้างบัญชีผ่านหน้า "จัดการผู้ใช้")
+-- ============================================================
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email, role, branch_id)
+  values (
+    new.id,
+    new.email,
+    case when exists (select 1 from public.profiles) then 'staff' else 'owner' end,
+    (select id from public.branches where position = 1)
+  );
+  return new;
+end;
+$$;
+
+-- ============================================================
+-- โปรโมชั่น: นับเฉพาะโปรของสาขาเดียวกับบิล (กันสับสน/ประหยัด query แม้ product_id
+-- ที่อ้างถึงกันจริงๆ ไม่มีทางข้ามสาขาอยู่แล้วเพราะสินค้าคนละชุดกันต่อสาขา)
+-- ============================================================
+create or replace function public.calculate_promo_discount(p_sale_id uuid)
+returns numeric
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_discount numeric := 0;
+  v_promo record;
+  v_qty numeric;
+  v_branch_id uuid;
+begin
+  select branch_id into v_branch_id from sales where id = p_sale_id;
+
+  for v_promo in
+    select * from promotions
+    where is_active = true
+      and type = 'buy_x_get_fixed_discount'
+      and coalesce(threshold_qty, 0) > 0
+      and coalesce(discount_amount, 0) > 0
+      and branch_id = v_branch_id
+  loop
+    select coalesce(sum(si.quantity), 0)
+      into v_qty
+      from sale_items si
+      where si.sale_id = p_sale_id
+        and si.product_id in (
+          select pp.product_id from promotion_products pp where pp.promotion_id = v_promo.id
+        );
+
+    if v_qty > 0 then
+      v_discount := v_discount + floor(v_qty / v_promo.threshold_qty) * v_promo.discount_amount;
+    end if;
+  end loop;
+
+  return v_discount;
+end;
+$$;
+
+-- ============================================================
+-- RPC ต่างๆ ที่สร้าง/แก้บิล: อัปเดตให้ stamp branch_id (ดึงจากโต๊ะ/คิว/บิลเดิมเสมอ ไม่ต้องรับ
+-- พารามิเตอร์ใหม่) และส่ง branch_id ให้ log_action ทุกจุดที่เคยเรียก
+-- ============================================================
+create or replace function public.void_sale(p_sale_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_item record;
+  v_sale_number bigint;
+  v_branch_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select branch_id into v_branch_id from sales where id = p_sale_id;
+  if not (public.is_owner() or v_branch_id = public.my_branch_id()) then
+    raise exception 'ไม่มีสิทธิ์เข้าถึงบิลของสาขาอื่น';
+  end if;
+
+  update sales set status = 'voided', voided_at = now()
+    where id = p_sale_id and status in ('open', 'completed')
+    returning sale_number, branch_id into v_sale_number, v_branch_id;
+  if not found then
+    raise exception 'ไม่พบบิลหรือบิลถูกยกเลิกไปแล้ว';
+  end if;
+
+  for v_item in
+    select si.product_id, si.quantity from sale_items si where si.sale_id = p_sale_id
+  loop
+    update products set stock = stock + v_item.quantity, updated_at = now()
+      where id = v_item.product_id and track_stock;
+  end loop;
+
+  perform public.log_action('void', 'sales', p_sale_id::text,
+    format('ยกเลิกบิล #%s', v_sale_number), v_branch_id);
+end;
+$$;
+
+create or replace function public.add_order_to_table(
+  p_table_id uuid,
+  p_items jsonb
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_sale_id uuid;
+  v_item jsonb;
+  v_product products%rowtype;
+  v_qty numeric;
+  v_line_total numeric;
+  v_line_cost numeric;
+  v_round_total numeric := 0;
+  v_round_count numeric := 0;
+  v_table_name text;
+  v_branch_id uuid;
+  v_promo_discount numeric;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+  if p_items is null or jsonb_array_length(p_items) = 0 then
+    raise exception 'ไม่มีรายการสินค้า';
+  end if;
+
+  select name, branch_id into v_table_name, v_branch_id from dining_tables where id = p_table_id;
+  if v_branch_id is null then
+    raise exception 'ไม่พบโต๊ะนี้';
+  end if;
+  if not (public.is_owner() or v_branch_id = public.my_branch_id()) then
+    raise exception 'ไม่มีสิทธิ์เข้าถึงโต๊ะของสาขาอื่น';
+  end if;
+
+  select id into v_sale_id from sales
+    where table_id = p_table_id and status = 'open'
+    limit 1;
+
+  if v_sale_id is null then
+    insert into sales (table_id, branch_id, subtotal, total, cost_total, payment_method, status, user_id)
+    values (p_table_id, v_branch_id, 0, 0, 0, 'cash', 'open', auth.uid())
+    returning id into v_sale_id;
+  end if;
+
+  for v_item in select * from jsonb_array_elements(p_items) loop
+    v_qty := (v_item ->> 'quantity')::numeric;
+    if v_qty is null or v_qty <= 0 then
+      raise exception 'จำนวนสินค้าไม่ถูกต้อง';
+    end if;
+
+    select * into v_product from products
+      where id = (v_item ->> 'product_id')::uuid
+      for update;
+    if not found then
+      raise exception 'ไม่พบสินค้า (id: %)', v_item ->> 'product_id';
+    end if;
+
+    v_line_total := v_product.price * v_qty;
+    v_line_cost := v_product.cost * v_qty;
+    v_round_total := v_round_total + v_line_total;
+    v_round_count := v_round_count + v_qty;
+
+    insert into sale_items (sale_id, branch_id, product_id, product_name, price, cost, quantity, total, created_by)
+    values (v_sale_id, v_branch_id, v_product.id, v_product.name, v_product.price, v_product.cost, v_qty, v_line_total, auth.uid());
+
+    if v_product.track_stock then
+      update products set stock = stock - v_qty, updated_at = now() where id = v_product.id;
+    end if;
+
+    update sales set
+      subtotal = subtotal + v_line_total,
+      cost_total = cost_total + v_line_cost
+      where id = v_sale_id;
+  end loop;
+
+  v_promo_discount := public.calculate_promo_discount(v_sale_id);
+  update sales set
+    discount = v_promo_discount,
+    total = greatest(subtotal - v_promo_discount, 0)
+    where id = v_sale_id;
+
+  perform public.log_action('order', 'sales', v_sale_id::text,
+    format('สั่งอาหารเข้า%s: %s รายการ ยอด %s บาท', coalesce(v_table_name, 'โต๊ะ'), v_round_count, v_round_total),
+    v_branch_id);
+
+  return v_sale_id;
+end;
+$$;
+
+create or replace function public.checkout_table(
+  p_sale_id uuid,
+  p_discount numeric default 0,
+  p_payment_method text default 'cash',
+  p_received numeric default null,
+  p_note text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_subtotal numeric;
+  v_total numeric;
+  v_sale_number bigint;
+  v_table_name text;
+  v_branch_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select s.subtotal, s.sale_number, s.branch_id, t.name
+    into v_subtotal, v_sale_number, v_branch_id, v_table_name
+    from sales s left join dining_tables t on t.id = s.table_id
+    where s.id = p_sale_id and s.status = 'open';
+  if not found then
+    raise exception 'ไม่พบบิลที่เปิดอยู่ของโต๊ะนี้';
+  end if;
+  if not (public.is_owner() or v_branch_id = public.my_branch_id()) then
+    raise exception 'ไม่มีสิทธิ์เข้าถึงบิลของสาขาอื่น';
+  end if;
+
+  v_total := greatest(v_subtotal - coalesce(p_discount, 0), 0);
+
+  update sales set
+    discount = coalesce(p_discount, 0),
+    total = v_total,
+    payment_method = p_payment_method,
+    received = p_received,
+    change = case when p_received is not null then greatest(p_received - v_total, 0) end,
+    note = p_note,
+    status = 'completed'
+    where id = p_sale_id;
+
+  perform public.log_action('checkout', 'sales', p_sale_id::text,
+    format('เก็บเงิน/ปิด%s บิล #%s ยอด %s บาท (%s)', coalesce(v_table_name, 'โต๊ะ'), v_sale_number, v_total, p_payment_method),
+    v_branch_id);
+end;
+$$;
+
+create or replace function public.update_table_order_item(
+  p_sale_item_id uuid,
+  p_quantity numeric
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_item sale_items%rowtype;
+  v_sale_status text;
+  v_sale_number bigint;
+  v_table_name text;
+  v_desc text;
+  v_is_delete boolean;
+begin
+  if not public.is_owner() then
+    raise exception 'แก้ไข/ลบรายการที่สั่งไปแล้วได้เฉพาะเจ้าของร้านเท่านั้น';
+  end if;
+
+  select * into v_item from sale_items where id = p_sale_item_id;
+  if not found then
+    raise exception 'ไม่พบรายการนี้';
+  end if;
+
+  select s.status, s.sale_number, t.name into v_sale_status, v_sale_number, v_table_name
+    from sales s left join dining_tables t on t.id = s.table_id
+    where s.id = v_item.sale_id;
+  if v_sale_status is distinct from 'open' then
+    raise exception 'แก้ไขได้เฉพาะบิลที่ยังเปิดอยู่เท่านั้น';
+  end if;
+
+  v_is_delete := p_quantity is null or p_quantity <= 0;
+
+  update order_edit_requests set status = 'approved', reviewed_by = auth.uid(), reviewed_at = now()
+    where sale_item_id = p_sale_item_id and status = 'pending';
+
+  perform public.apply_table_order_item_edit(p_sale_item_id, p_quantity);
+
+  if v_is_delete then
+    v_desc := format('ลบ "%s" ออกจากบิล #%s ของ%s', v_item.product_name, v_sale_number, coalesce(v_table_name, 'โต๊ะ'));
+  else
+    v_desc := format('แก้ไข "%s" ในบิล #%s ของ%s จำนวน %s → %s', v_item.product_name, v_sale_number, coalesce(v_table_name, 'โต๊ะ'), v_item.quantity, p_quantity);
+  end if;
+
+  perform public.log_action('edit_item', 'sale_items', p_sale_item_id::text, v_desc, v_item.branch_id);
+
+  perform public.trigger_push_notify(jsonb_build_object(
+    'type', 'order_edit',
+    'table_name', coalesce(v_table_name, 'โต๊ะ'),
+    'product_name', v_item.product_name,
+    'is_delete', v_is_delete,
+    'old_quantity', v_item.quantity,
+    'new_quantity', coalesce(p_quantity, 0)
+  ));
+end;
+$$;
+
+create or replace function public.request_edit_table_order_item(
+  p_sale_item_id uuid,
+  p_quantity numeric
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_item sale_items%rowtype;
+  v_sale_status text;
+  v_sale_number bigint;
+  v_table_id uuid;
+  v_table_name text;
+  v_request_id uuid;
+  v_desc text;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select * into v_item from sale_items where id = p_sale_item_id;
+  if not found then
+    raise exception 'ไม่พบรายการนี้';
+  end if;
+
+  select s.status, s.sale_number, s.table_id, t.name into v_sale_status, v_sale_number, v_table_id, v_table_name
+    from sales s left join dining_tables t on t.id = s.table_id
+    where s.id = v_item.sale_id;
+  if v_sale_status is distinct from 'open' then
+    raise exception 'แก้ไขได้เฉพาะบิลที่ยังเปิดอยู่เท่านั้น';
+  end if;
+
+  if public.is_owner() then
+    perform public.update_table_order_item(p_sale_item_id, p_quantity);
+    return null;
+  end if;
+
+  if v_item.branch_id <> public.my_branch_id() then
+    raise exception 'ไม่มีสิทธิ์เข้าถึงรายการของสาขาอื่น';
+  end if;
+
+  update order_edit_requests set status = 'rejected', reviewed_at = now()
+    where sale_item_id = p_sale_item_id and status = 'pending';
+
+  insert into order_edit_requests (sale_item_id, sale_id, table_id, branch_id, product_name, old_quantity, new_quantity, requested_by)
+  values (p_sale_item_id, v_item.sale_id, v_table_id, v_item.branch_id, v_item.product_name, v_item.quantity, coalesce(p_quantity, 0), auth.uid())
+  returning id into v_request_id;
+
+  update sale_items set pending_edit_quantity = coalesce(p_quantity, 0), pending_edit_request_id = v_request_id
+    where id = p_sale_item_id;
+
+  if p_quantity is null or p_quantity <= 0 then
+    v_desc := format('ขออนุมัติลบ "%s" ออกจากบิล #%s ของ%s', v_item.product_name, v_sale_number, coalesce(v_table_name, 'โต๊ะ'));
+  else
+    v_desc := format('ขออนุมัติแก้ไข "%s" ในบิล #%s ของ%s จำนวน %s → %s', v_item.product_name, v_sale_number, coalesce(v_table_name, 'โต๊ะ'), v_item.quantity, p_quantity);
+  end if;
+  perform public.log_action('request_edit_item', 'sale_items', p_sale_item_id::text, v_desc, v_item.branch_id);
+
+  perform public.trigger_push_notify(jsonb_build_object(
+    'type', 'order_edit_request',
+    'table_name', coalesce(v_table_name, 'โต๊ะ'),
+    'product_name', v_item.product_name,
+    'is_delete', coalesce(p_quantity, 0) <= 0,
+    'old_quantity', v_item.quantity,
+    'new_quantity', coalesce(p_quantity, 0)
+  ));
+
+  return v_request_id;
+end;
+$$;
+
+create or replace function public.resolve_order_edit_request(p_request_id uuid, p_approve boolean)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_req order_edit_requests%rowtype;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select * into v_req from order_edit_requests where id = p_request_id for update;
+  if not found then
+    raise exception 'ไม่พบคำขอนี้';
+  end if;
+  if v_req.status <> 'pending' then
+    raise exception 'คำขอนี้ถูกจัดการไปแล้ว';
+  end if;
+
+  if p_approve then
+    if not public.is_owner() then
+      raise exception 'อนุมัติได้เฉพาะเจ้าของร้านเท่านั้น';
+    end if;
+    perform public.apply_table_order_item_edit(v_req.sale_item_id, v_req.new_quantity);
+    update order_edit_requests set status = 'approved', reviewed_by = auth.uid(), reviewed_at = now()
+      where id = p_request_id;
+    perform public.log_action('approve_edit_request', 'order_edit_requests', p_request_id::text,
+      format('อนุมัติแก้ไข "%s" จำนวน %s → %s', v_req.product_name, v_req.old_quantity, v_req.new_quantity),
+      v_req.branch_id);
+  else
+    if not (public.is_owner() or auth.uid() = v_req.requested_by) then
+      raise exception 'ยกเลิกคำขอนี้ได้เฉพาะเจ้าของร้านหรือผู้ที่ขอเท่านั้น';
+    end if;
+    update sale_items set pending_edit_quantity = null, pending_edit_request_id = null
+      where id = v_req.sale_item_id;
+    update order_edit_requests set status = 'rejected', reviewed_by = auth.uid(), reviewed_at = now()
+      where id = p_request_id;
+    perform public.log_action('reject_edit_request', 'order_edit_requests', p_request_id::text,
+      format('ปฏิเสธ/ยกเลิกคำขอแก้ไข "%s"', v_req.product_name),
+      v_req.branch_id);
+  end if;
+end;
+$$;
+
+create or replace function public.customer_add_order(
+  p_table_id uuid,
+  p_items jsonb
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_table_active boolean;
+  v_table_name text;
+  v_branch_id uuid;
+  v_sale_id uuid;
+  v_item jsonb;
+  v_product products%rowtype;
+  v_qty numeric;
+  v_note text;
+  v_line_total numeric;
+  v_line_cost numeric;
+  v_round_total numeric := 0;
+  v_round_count numeric := 0;
+  v_promo_discount numeric;
+begin
+  select is_active, name, branch_id into v_table_active, v_table_name, v_branch_id
+    from dining_tables where id = p_table_id;
+  if v_table_active is null then
+    raise exception 'ไม่พบโต๊ะนี้';
+  end if;
+  if not v_table_active then
+    raise exception 'โต๊ะนี้ไม่พร้อมใช้งาน กรุณาติดต่อพนักงาน';
+  end if;
+  if p_items is null or jsonb_array_length(p_items) = 0 then
+    raise exception 'ไม่มีรายการสินค้า';
+  end if;
+
+  select id into v_sale_id from sales
+    where table_id = p_table_id and status = 'open'
+    limit 1;
+
+  if v_sale_id is null then
+    insert into sales (table_id, branch_id, subtotal, total, cost_total, payment_method, status, user_id)
+    values (p_table_id, v_branch_id, 0, 0, 0, 'cash', 'open', null)
+    returning id into v_sale_id;
+  end if;
+
+  for v_item in select * from jsonb_array_elements(p_items) loop
+    v_qty := (v_item ->> 'quantity')::numeric;
+    if v_qty is null or v_qty <= 0 or v_qty > 99 then
+      raise exception 'จำนวนสินค้าไม่ถูกต้อง';
+    end if;
+    v_note := nullif(btrim(v_item ->> 'note'), '');
+    if v_note is not null and length(v_note) > 200 then
+      v_note := left(v_note, 200);
+    end if;
+
+    select * into v_product from products
+      where id = (v_item ->> 'product_id')::uuid and is_active = true
+      for update;
+    if not found then
+      raise exception 'ไม่พบสินค้า (id: %)', v_item ->> 'product_id';
+    end if;
+
+    v_line_total := v_product.price * v_qty;
+    v_line_cost := v_product.cost * v_qty;
+    v_round_total := v_round_total + v_line_total;
+    v_round_count := v_round_count + v_qty;
+
+    insert into sale_items (sale_id, branch_id, product_id, product_name, price, cost, quantity, total, ordered_by, note)
+    values (v_sale_id, v_branch_id, v_product.id, v_product.name, v_product.price, v_product.cost, v_qty, v_line_total, 'customer', v_note);
+
+    if v_product.track_stock then
+      update products set stock = stock - v_qty, updated_at = now() where id = v_product.id;
+    end if;
+
+    update sales set
+      subtotal = subtotal + v_line_total,
+      cost_total = cost_total + v_line_cost
+      where id = v_sale_id;
+  end loop;
+
+  v_promo_discount := public.calculate_promo_discount(v_sale_id);
+  update sales set
+    discount = v_promo_discount,
+    total = greatest(subtotal - v_promo_discount, 0)
+    where id = v_sale_id;
+
+  perform public.log_action('order', 'sales', v_sale_id::text,
+    format('ลูกค้าสั่งอาหารเข้า%s เอง: %s รายการ ยอด %s บาท', coalesce(v_table_name, 'โต๊ะ'), v_round_count, v_round_total),
+    v_branch_id);
+
+  return v_sale_id;
+end;
+$$;
+
+create or replace function public.request_checkout(p_table_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_sale_id uuid;
+  v_table_name text;
+  v_branch_id uuid;
+begin
+  select id, branch_id into v_sale_id, v_branch_id from sales where table_id = p_table_id and status = 'open' limit 1;
+  if v_sale_id is null then
+    raise exception 'โต๊ะนี้ยังไม่มีออเดอร์';
+  end if;
+
+  update sales set bill_requested_at = now() where id = v_sale_id;
+
+  select name into v_table_name from dining_tables where id = p_table_id;
+  perform public.log_action('request_checkout', 'sales', v_sale_id::text,
+    format('ลูกค้า%s กดเรียกเก็บเงิน', coalesce(v_table_name, 'โต๊ะ')),
+    v_branch_id);
+end;
+$$;
+
+create or replace function public.cancel_bill_request(p_sale_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_table_name text;
+  v_branch_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select branch_id into v_branch_id from sales where id = p_sale_id;
+  if not (public.is_owner() or v_branch_id = public.my_branch_id()) then
+    raise exception 'ไม่มีสิทธิ์เข้าถึงบิลของสาขาอื่น';
+  end if;
+
+  update sales set bill_requested_at = null
+    where id = p_sale_id and status = 'open' and bill_requested_at is not null
+    returning branch_id into v_branch_id;
+  if not found then
+    raise exception 'ไม่พบการเรียกเก็บเงินที่ต้องยกเลิก (อาจถูกยกเลิกไปแล้ว)';
+  end if;
+
+  select dt.name into v_table_name
+    from sales s join dining_tables dt on dt.id = s.table_id
+    where s.id = p_sale_id;
+
+  perform public.log_action('cancel_bill_request', 'sales', p_sale_id::text,
+    format('ยกเลิกการเรียกเก็บเงินของ%s (ลูกค้ากดผิด)', coalesce(v_table_name, 'โต๊ะ')),
+    v_branch_id);
+end;
+$$;
+
+create or replace function public.add_quick_sale_item(p_queue_id uuid, p_product_id uuid)
+returns table(sale_id uuid, sale_item_id uuid, quantity numeric)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_sale_id uuid;
+  v_product products%rowtype;
+  v_item_id uuid;
+  v_new_qty numeric;
+  v_branch_id uuid;
+  v_promo_discount numeric;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select * into v_product from products where id = p_product_id for update;
+  if not found then
+    raise exception 'ไม่พบสินค้า';
+  end if;
+
+  select branch_id into v_branch_id from quick_sale_queues where id = p_queue_id;
+  if v_branch_id is null then
+    raise exception 'ไม่พบคิวนี้';
+  end if;
+  if not (public.is_owner() or v_branch_id = public.my_branch_id()) then
+    raise exception 'ไม่มีสิทธิ์เข้าถึงคิวของสาขาอื่น';
+  end if;
+
+  select id into v_sale_id from sales
+    where queue_id = p_queue_id and status = 'open'
+    limit 1;
+
+  if v_sale_id is null then
+    insert into sales (queue_id, branch_id, subtotal, total, cost_total, payment_method, status, user_id)
+    values (p_queue_id, v_branch_id, 0, 0, 0, 'cash', 'open', auth.uid())
+    returning id into v_sale_id;
+  end if;
+
+  select id, sale_items.quantity into v_item_id, v_new_qty from sale_items
+    where sale_items.sale_id = v_sale_id and product_id = p_product_id
+    limit 1;
+
+  if v_item_id is null then
+    v_new_qty := 1;
+    -- ขายด่วนไม่มี workflow ครัว (pending/accepted/served) เหมือนโหมดเปิดโต๊ะ ถือว่า
+    -- "เสิร์ฟแล้ว" ทันทีที่กดเพิ่ม กัน status default 'pending' ไปโดนนับเป็นออเดอร์ค้างรับผิดๆ
+    -- created_by stamp ไว้ตอนสร้างแถวเท่านั้น (ไม่เปลี่ยนตอนคนอื่นกดเพิ่มจำนวนซ้ำทีหลัง)
+    insert into sale_items (sale_id, branch_id, product_id, product_name, price, cost, quantity, total, status, created_by)
+    values (v_sale_id, v_branch_id, v_product.id, v_product.name, v_product.price, v_product.cost, 1, v_product.price, 'served', auth.uid())
+    returning id into v_item_id;
+  else
+    v_new_qty := v_new_qty + 1;
+    update sale_items set quantity = v_new_qty, total = v_new_qty * price where id = v_item_id;
+  end if;
+
+  if v_product.track_stock then
+    update products set stock = stock - 1, updated_at = now() where id = v_product.id;
+  end if;
+
+  update sales set
+    subtotal = subtotal + v_product.price,
+    cost_total = cost_total + v_product.cost
+    where id = v_sale_id;
+
+  v_promo_discount := public.calculate_promo_discount(v_sale_id);
+  update sales set
+    discount = v_promo_discount,
+    total = greatest(subtotal - v_promo_discount, 0)
+    where id = v_sale_id;
+
+  return query select v_sale_id, v_item_id, v_new_qty;
+end;
+$$;
+
+create or replace function public.set_quick_sale_item_quantity(p_sale_item_id uuid, p_quantity numeric)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_item sale_items%rowtype;
+  v_sale sales%rowtype;
+  v_old_total numeric;
+  v_old_cost numeric;
+  v_new_total numeric := 0;
+  v_new_cost numeric := 0;
+  v_qty_delta numeric;
+  v_promo_discount numeric;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select * into v_item from sale_items where id = p_sale_item_id for update;
+  if not found then
+    raise exception 'ไม่พบรายการนี้';
+  end if;
+  if not (public.is_owner() or v_item.branch_id = public.my_branch_id()) then
+    raise exception 'ไม่มีสิทธิ์เข้าถึงรายการของสาขาอื่น';
+  end if;
+
+  select * into v_sale from sales where id = v_item.sale_id;
+  if v_sale.queue_id is null or v_sale.status <> 'open' then
+    raise exception 'แก้ไขรายการนี้ไม่ได้';
+  end if;
+
+  v_old_total := v_item.total;
+  v_old_cost := v_item.cost * v_item.quantity;
+  v_qty_delta := coalesce(p_quantity, 0) - v_item.quantity;
+
+  if p_quantity is null or p_quantity <= 0 then
+    delete from sale_items where id = p_sale_item_id;
+  else
+    v_new_total := v_item.price * p_quantity;
+    v_new_cost := v_item.cost * p_quantity;
+    update sale_items set quantity = p_quantity, total = v_new_total where id = p_sale_item_id;
+  end if;
+
+  if v_item.product_id is not null then
+    update products set stock = stock - v_qty_delta, updated_at = now()
+      where id = v_item.product_id and track_stock;
+  end if;
+
+  update sales set
+    subtotal = subtotal - v_old_total + v_new_total,
+    cost_total = cost_total - v_old_cost + v_new_cost
+    where id = v_item.sale_id;
+
+  v_promo_discount := public.calculate_promo_discount(v_item.sale_id);
+  update sales set
+    discount = v_promo_discount,
+    total = greatest(subtotal - v_promo_discount, 0)
+    where id = v_item.sale_id;
+end;
+$$;
+
+create or replace function public.clear_quick_sale_queue(p_queue_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_sale_id uuid;
+  v_item record;
+  v_branch_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select branch_id into v_branch_id from quick_sale_queues where id = p_queue_id;
+  if not (public.is_owner() or v_branch_id = public.my_branch_id()) then
+    raise exception 'ไม่มีสิทธิ์เข้าถึงคิวของสาขาอื่น';
+  end if;
+
+  select id into v_sale_id from sales where queue_id = p_queue_id and status = 'open' limit 1;
+  if v_sale_id is null then
+    return;
+  end if;
+
+  for v_item in select product_id, quantity from sale_items where sale_id = v_sale_id loop
+    if v_item.product_id is not null then
+      update products set stock = stock + v_item.quantity, updated_at = now()
+        where id = v_item.product_id and track_stock;
+    end if;
+  end loop;
+
+  delete from sales where id = v_sale_id;
+end;
+$$;
+
+create or replace function public.checkout_quick_sale_queue(
+  p_sale_id uuid,
+  p_discount numeric default 0,
+  p_payment_method text default 'cash',
+  p_received numeric default null,
+  p_note text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_subtotal numeric;
+  v_total numeric;
+  v_sale_number bigint;
+  v_queue_name text;
+  v_branch_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select s.subtotal, s.sale_number, s.branch_id, q.name
+    into v_subtotal, v_sale_number, v_branch_id, v_queue_name
+    from sales s join quick_sale_queues q on q.id = s.queue_id
+    where s.id = p_sale_id and s.status = 'open';
+  if not found then
+    raise exception 'ไม่พบบิลที่เปิดอยู่ของคิวนี้';
+  end if;
+  if not (public.is_owner() or v_branch_id = public.my_branch_id()) then
+    raise exception 'ไม่มีสิทธิ์เข้าถึงบิลของสาขาอื่น';
+  end if;
+
+  v_total := greatest(v_subtotal - coalesce(p_discount, 0), 0);
+
+  update sales set
+    discount = coalesce(p_discount, 0),
+    total = v_total,
+    payment_method = p_payment_method,
+    received = p_received,
+    change = case when p_received is not null then greatest(p_received - v_total, 0) end,
+    note = p_note,
+    status = 'completed'
+    where id = p_sale_id;
+
+  perform public.log_action('checkout', 'sales', p_sale_id::text,
+    format('เก็บเงินขายด่วน (%s) บิล #%s ยอด %s บาท (%s)', v_queue_name, v_sale_number, v_total, p_payment_method),
+    v_branch_id);
+end;
+$$;
+
+-- ============================================================
+-- เงินสด/เงินโอน: เปิดกะ/ปรับยอดเงินโอนต้องระบุสาขาชัดเจน (เจ้าของร้านเลือกจากสาขาที่กำลัง
+-- ทำงานอยู่ในแอป) ปิดกะคำนวณยอดขาย/รายจ่ายเฉพาะของสาขานั้น (เดิมคิดรวมทุกสาขาซึ่งผิด
+-- ตั้งแต่มี 2 สาขา) และรับกะเปิดพร้อมกันได้สาขาละ 1 กะ
+-- ============================================================
+drop function if exists public.open_cash_shift(numeric, text);
+
+create or replace function public.open_cash_shift(
+  p_opening_amount numeric,
+  p_note text default null,
+  p_branch_id uuid default null
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id uuid;
+begin
+  if not public.is_owner() then
+    raise exception 'สำหรับเจ้าของร้านเท่านั้น';
+  end if;
+  if p_branch_id is null then
+    raise exception 'กรุณาระบุสาขา';
+  end if;
+  if exists (select 1 from cash_shifts where status = 'open' and branch_id = p_branch_id) then
+    raise exception 'มีกะที่เปิดอยู่แล้ว ต้องปิดกะเดิมก่อน';
+  end if;
+
+  insert into cash_shifts (branch_id, opening_amount, opening_note, opened_by)
+  values (p_branch_id, coalesce(p_opening_amount, 0), p_note, auth.uid())
+  returning id into v_id;
+
+  perform public.log_action('cash_shift_open', 'cash_shifts', v_id::text,
+    format('เปิดกะเงินสด ตั้งต้น %s บาท', coalesce(p_opening_amount, 0)),
+    p_branch_id);
+
+  return v_id;
+end;
+$$;
+
+create or replace function public.close_cash_shift(
+  p_shift_id uuid,
+  p_closing_amount numeric,
+  p_note text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_shift cash_shifts%rowtype;
+  v_cash_sales numeric;
+  v_cash_expenses numeric;
+  v_adjustments numeric;
+  v_expected numeric;
+  v_diff numeric;
+begin
+  if not public.is_owner() then
+    raise exception 'สำหรับเจ้าของร้านเท่านั้น';
+  end if;
+
+  select * into v_shift from cash_shifts where id = p_shift_id and status = 'open' for update;
+  if not found then
+    raise exception 'ไม่พบกะที่เปิดอยู่ (อาจถูกปิดไปแล้ว)';
+  end if;
+
+  select coalesce(sum(total), 0) into v_cash_sales
+    from sales
+    where payment_method = 'cash' and status = 'completed'
+      and branch_id = v_shift.branch_id
+      and created_at >= v_shift.opened_at;
+
+  select coalesce(sum(amount), 0) into v_cash_expenses
+    from expenses
+    where payment_method = 'cash'
+      and branch_id = v_shift.branch_id
+      and created_at >= v_shift.opened_at;
+
+  select coalesce(sum(amount), 0) into v_adjustments
+    from account_adjustments
+    where account = 'cash' and cash_shift_id = p_shift_id;
+
+  v_expected := v_shift.opening_amount + v_cash_sales - v_cash_expenses + v_adjustments;
+  v_diff := coalesce(p_closing_amount, 0) - v_expected;
+
+  update cash_shifts set
+    closing_amount = p_closing_amount,
+    closing_note = p_note,
+    closed_by = auth.uid(),
+    closed_at = now(),
+    expected_amount = v_expected,
+    difference = v_diff,
+    status = 'closed'
+    where id = p_shift_id;
+
+  perform public.log_action('cash_shift_close', 'cash_shifts', p_shift_id::text,
+    format('ปิดกะเงินสด นับได้ %s บาท (คาดว่าควรมี %s บาท ส่วนต่าง %s บาท)',
+      p_closing_amount, v_expected, v_diff),
+    v_shift.branch_id);
+end;
+$$;
+
+create or replace function public.add_cash_adjustment(
+  p_shift_id uuid,
+  p_amount numeric,
+  p_reason text
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_branch_id uuid;
+begin
+  if not public.is_owner() then
+    raise exception 'สำหรับเจ้าของร้านเท่านั้น';
+  end if;
+  select branch_id into v_branch_id from cash_shifts where id = p_shift_id and status = 'open';
+  if v_branch_id is null then
+    raise exception 'ปรับยอดได้เฉพาะกะที่ยังเปิดอยู่เท่านั้น';
+  end if;
+  if p_reason is null or btrim(p_reason) = '' then
+    raise exception 'กรุณาระบุเหตุผลที่ปรับยอด';
+  end if;
+
+  insert into account_adjustments (account, branch_id, cash_shift_id, amount, reason, created_by)
+  values ('cash', v_branch_id, p_shift_id, p_amount, p_reason, auth.uid());
+
+  perform public.log_action('cash_adjustment', 'account_adjustments', p_shift_id::text,
+    format('ปรับยอดเงินสดระหว่างกะ %s%s บาท (%s)', case when p_amount >= 0 then '+' else '' end, p_amount, p_reason),
+    v_branch_id);
+end;
+$$;
+
+drop function if exists public.add_transfer_adjustment(numeric, text);
+
+create or replace function public.add_transfer_adjustment(
+  p_amount numeric,
+  p_reason text,
+  p_branch_id uuid default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_owner() then
+    raise exception 'สำหรับเจ้าของร้านเท่านั้น';
+  end if;
+  if p_branch_id is null then
+    raise exception 'กรุณาระบุสาขา';
+  end if;
+  if p_reason is null or btrim(p_reason) = '' then
+    raise exception 'กรุณาระบุเหตุผลที่ปรับยอด';
+  end if;
+
+  insert into account_adjustments (account, branch_id, amount, reason, created_by)
+  values ('transfer', p_branch_id, p_amount, p_reason, auth.uid());
+
+  perform public.log_action('transfer_adjustment', 'account_adjustments', null,
+    format('ปรับยอดเงินโอน %s%s บาท (%s)', case when p_amount >= 0 then '+' else '' end, p_amount, p_reason),
+    p_branch_id);
+end;
+$$;
+
+revoke execute on function public.open_cash_shift from public, anon;
+revoke execute on function public.close_cash_shift from public, anon;
+revoke execute on function public.add_cash_adjustment from public, anon;
+revoke execute on function public.add_transfer_adjustment from public, anon;
+grant execute on function public.open_cash_shift to authenticated;
+grant execute on function public.close_cash_shift to authenticated;
+grant execute on function public.add_cash_adjustment to authenticated;
+grant execute on function public.add_transfer_adjustment to authenticated;
+
+-- ============================================================
+-- อันดับสินค้าขายดี: กรองเฉพาะสาขาที่ระบุ (เดิมนับรวมทุกสาขา ทำให้เมนูหน้าขายด่วนของ
+-- สาขาหนึ่งถูกเรียงตามยอดขายของอีกสาขาด้วย)
+-- ============================================================
+drop function if exists public.get_product_sales_counts(int);
+
+create or replace function public.get_product_sales_counts(p_branch_id uuid, p_days int default 30)
+returns table(product_id uuid, qty numeric)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select si.product_id, sum(si.quantity) as qty
+  from public.sale_items si
+  join public.sales s on s.id = si.sale_id
+  where s.status = 'completed'
+    and si.product_id is not null
+    and s.branch_id = p_branch_id
+    and s.created_at >= now() - (p_days || ' days')::interval
+  group by si.product_id;
+$$;
+
+revoke execute on function public.get_product_sales_counts from public, anon;
+grant execute on function public.get_product_sales_counts to authenticated;
+
+-- ============================================================
+-- เมนูลูกค้า (public_menu): เพิ่ม branch_id ให้ view นี้ด้วย — ลูกค้าสแกน QR โต๊ะของสาขาไหน
+-- ฝั่งแอปจะดึง dining_tables.branch_id ของโต๊ะนั้นมา filter เมนู/หมวดหมู่/โปรโมชั่นให้ตรงสาขา
+-- (view นี้ bypass RLS ของ products อยู่แล้วโดยดีไซน์ ไม่งั้นลูกค้าจะเห็นสินค้าปนกันทั้ง 2 สาขา)
+-- ============================================================
+drop view if exists public.public_menu;
+create view public.public_menu as
+select
+  id, name, barcode, category_id, price,
+  0::numeric(12, 2) as cost,
+  case when stock <= 0 then 0::numeric(12, 2) else 999999::numeric(12, 2) end as stock,
+  track_stock,
+  0::numeric(12, 2) as low_stock_threshold,
+  image_url, is_active, created_at, updated_at,
+  branch_id
+from public.products
+where is_active = true and is_sold_out = false;
+
+grant select on public.public_menu to anon, authenticated;
+
+
+-- ============================================================
+-- update_product เป็น security definer (bypass RLS) ต้องเช็คสาขาเองตรงๆ กันพนักงาน
+-- สาขาหนึ่งแก้ไขราคา/สต๊อกสินค้าของอีกสาขาผ่าน RPC นี้ได้ทั้งที่ RLS ของตาราง products บล็อกไว้แล้ว
+-- ============================================================
+create or replace function public.update_product(
+  p_id uuid,
+  p_name text,
+  p_barcode text,
+  p_category_id uuid,
+  p_price numeric,
+  p_cost numeric,
+  p_stock numeric default null,
+  p_track_stock boolean default true,
+  p_low_stock_threshold numeric default 5,
+  p_stock_group text default null,
+  p_image_url text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_branch_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select branch_id into v_branch_id from products where id = p_id;
+  if v_branch_id is null then
+    raise exception 'ไม่พบสินค้า';
+  end if;
+  if not (public.is_owner() or v_branch_id = public.my_branch_id()) then
+    raise exception 'ไม่มีสิทธิ์เข้าถึงสินค้าของสาขาอื่น';
+  end if;
+
+  update products set
+    name = p_name,
+    barcode = p_barcode,
+    category_id = p_category_id,
+    price = p_price,
+    cost = p_cost,
+    stock = coalesce(p_stock, stock),
+    track_stock = p_track_stock,
+    low_stock_threshold = p_low_stock_threshold,
+    stock_group = p_stock_group,
+    image_url = p_image_url,
+    updated_by = auth.uid(),
+    updated_at = now()
+    where id = p_id;
+
+  if not found then
+    raise exception 'ไม่พบสินค้า';
+  end if;
+end;
+$$;
+
+revoke execute on function public.update_product from public, anon;
+grant execute on function public.update_product to authenticated;

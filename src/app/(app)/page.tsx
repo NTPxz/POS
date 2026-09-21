@@ -7,12 +7,14 @@ import { Category, Product } from "@/lib/types";
 import QuickSaleView from "@/components/pos/QuickSaleView";
 import TablesView from "@/components/pos/TablesView";
 import { useTableAlert } from "@/components/TableAlertProvider";
+import { useBranch } from "@/components/BranchProvider";
 
 type Mode = "quick" | "tables";
 
 export default function PosPage() {
   const supabase = useMemo(() => createClient(), []);
   const { clearAlert, focusTables, consumeFocusTables } = useTableAlert();
+  const { activeBranchId } = useBranch();
   const [mode, setMode] = useState<Mode>("quick");
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -31,6 +33,7 @@ export default function PosPage() {
   }, [mode, clearAlert]);
 
   const loadData = useCallback(async (silent = false) => {
+    if (!activeBranchId) return;
     if (!silent) setLoading(true);
     setLoadError(null);
     try {
@@ -38,10 +41,15 @@ export default function PosPage() {
         supabase
           .from("products")
           .select("*")
+          .eq("branch_id", activeBranchId)
           .eq("is_active", true)
           .eq("is_sold_out", false)
           .order("name"),
-        supabase.from("categories").select("*").order("position"),
+        supabase
+          .from("categories")
+          .select("*")
+          .eq("branch_id", activeBranchId)
+          .order("position"),
       ]);
       if (prodRes.error) throw prodRes.error;
       if (catRes.error) throw catRes.error;
@@ -52,7 +60,7 @@ export default function PosPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, activeBranchId]);
 
   useEffect(() => {
     loadData();

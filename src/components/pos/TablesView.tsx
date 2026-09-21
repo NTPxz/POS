@@ -30,6 +30,7 @@ import {
   SaleWithItems,
 } from "@/lib/types";
 import { useProfile } from "@/components/ProfileProvider";
+import { useBranch } from "@/components/BranchProvider";
 import { useTableAlert } from "@/components/TableAlertProvider";
 import ProductPicker from "@/components/pos/ProductPicker";
 import PaymentFields from "@/components/pos/PaymentFields";
@@ -47,6 +48,7 @@ export default function TablesView({
 }) {
   const supabase = useMemo(() => createClient(), []);
   const { profile } = useProfile();
+  const { activeBranchId } = useBranch();
   const isOwner = profile?.role === "owner";
   const isManagerUp = !!profile && hasRole(profile.role, "manager");
   const { focusTableId, consumeFocusTableId } = useTableAlert();
@@ -69,6 +71,7 @@ export default function TablesView({
   }, [focusTableId, tables, consumeFocusTableId]);
 
   const loadTables = useCallback(async (silent = false) => {
+    if (!activeBranchId) return;
     if (!silent) setLoading(true);
     setLoadError(null);
     try {
@@ -76,11 +79,13 @@ export default function TablesView({
         supabase
           .from("dining_tables")
           .select("*")
+          .eq("branch_id", activeBranchId)
           .eq("is_active", true)
           .order("position"),
         supabase
           .from("sales")
           .select("*, sale_items(*)")
+          .eq("branch_id", activeBranchId)
           .eq("status", "open")
           .not("table_id", "is", null)
           .order("created_at", { ascending: false, foreignTable: "sale_items" }),
@@ -98,7 +103,7 @@ export default function TablesView({
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, activeBranchId]);
 
   useEffect(() => {
     loadTables();
@@ -278,9 +283,10 @@ export default function TablesView({
         </div>
       )}
 
-      {manageOpen && (
+      {manageOpen && activeBranchId && (
         <TableManageModal
           tables={tables}
+          branchId={activeBranchId}
           onClose={() => setManageOpen(false)}
           onChanged={loadTables}
         />
@@ -1115,10 +1121,12 @@ function TableCheckoutModal({
 
 function TableManageModal({
   tables,
+  branchId,
   onClose,
   onChanged,
 }: {
   tables: DiningTable[];
+  branchId: string;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -1136,6 +1144,7 @@ function TableManageModal({
     const { error } = await supabase.from("dining_tables").insert({
       name: name.trim(),
       position: tables.length + 1,
+      branch_id: branchId,
     });
     setSaving(false);
     if (error) {

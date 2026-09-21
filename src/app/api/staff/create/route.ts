@@ -17,6 +17,7 @@ export async function POST(request: Request) {
   const emailInput: string = (body?.email ?? "").trim().toLowerCase();
   const password: string = body?.password ?? "";
   const role: Role = body?.role;
+  const branchId: string = body?.branchId ?? "";
   const phoneDigits: string = (body?.phone ?? "").replace(/\D/g, "");
 
   if (!phoneDigits) {
@@ -31,8 +32,19 @@ export async function POST(request: Request) {
   if (!ALLOWED_ROLES.includes(role)) {
     return NextResponse.json({ error: "role ไม่ถูกต้อง" }, { status: 400 });
   }
+  if (!branchId) {
+    return NextResponse.json({ error: "กรุณาเลือกสาขา" }, { status: 400 });
+  }
 
   const supabase = createClient();
+  const { data: branch } = await supabase
+    .from("branches")
+    .select("id")
+    .eq("id", branchId)
+    .maybeSingle();
+  if (!branch) {
+    return NextResponse.json({ error: "ไม่พบสาขาที่เลือก" }, { status: 400 });
+  }
   const { data: existingPhone } = await supabase
     .from("profiles")
     .select("id")
@@ -69,6 +81,7 @@ export async function POST(request: Request) {
       full_name: fullName || null,
       phone: phoneDigits,
       role,
+      branch_id: branchId,
       updated_at: new Date().toISOString(),
     })
     .eq("id", created.user.id);

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatDateTime } from "@/lib/format";
 import { Announcement } from "@/lib/types";
 import { useProfile } from "@/components/ProfileProvider";
+import { useBranch } from "@/components/BranchProvider";
 import { ANNOUNCEMENT_NOTES, useChime } from "@/lib/chime";
 
 const DISMISSED_KEY = "pos-last-dismissed-announcement";
@@ -13,6 +14,7 @@ const DISMISSED_KEY = "pos-last-dismissed-announcement";
 export default function StaffAnnouncementListener() {
   const supabase = useMemo(() => createClient(), []);
   const { profile } = useProfile();
+  const { activeBranchId } = useBranch();
   const [current, setCurrent] = useState<Announcement | null>(null);
   const { play: playMelody, stop: stopChime } = useChime();
 
@@ -28,11 +30,12 @@ export default function StaffAnnouncementListener() {
   );
 
   useEffect(() => {
-    if (!profile) return;
+    if (!profile || !activeBranchId) return;
 
     supabase
       .from("announcements")
       .select("*")
+      .eq("branch_id", activeBranchId)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -46,7 +49,9 @@ export default function StaffAnnouncementListener() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "announcements" },
         (payload) => {
-          showIfUnseen(payload.new as Announcement);
+          const row = payload.new as Announcement;
+          if (row.branch_id !== activeBranchId) return;
+          showIfUnseen(row);
         }
       )
       .subscribe();
@@ -54,7 +59,7 @@ export default function StaffAnnouncementListener() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [profile, supabase, showIfUnseen]);
+  }, [profile, supabase, showIfUnseen, activeBranchId]);
 
   function dismiss() {
     stopChime();

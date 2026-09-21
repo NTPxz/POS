@@ -17,6 +17,7 @@ import { formatDate } from "@/lib/format";
 import { Profile, Role, ROLE_LABELS } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
 import { useProfile } from "@/components/ProfileProvider";
+import { useBranch } from "@/components/BranchProvider";
 
 export default function StaffPage() {
   return (
@@ -31,6 +32,7 @@ const ROLE_ORDER: Role[] = ["owner", "manager", "staff"];
 function StaffPageContent() {
   const supabase = useMemo(() => createClient(), []);
   const { profile: me, refresh: refreshMe } = useProfile();
+  const { branches } = useBranch();
   const [staff, setStaff] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -108,6 +110,22 @@ function StaffPageContent() {
     if (p.id === me?.id) refreshMe();
   }
 
+  async function saveBranch(p: Profile, branchId: string) {
+    if (branchId === p.branch_id) return;
+    setSavingId(p.id);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ branch_id: branchId, updated_at: new Date().toISOString() })
+      .eq("id", p.id);
+    setSavingId(null);
+    if (error) {
+      window.alert(`เปลี่ยนสาขาไม่สำเร็จ: ${error.message}`);
+      return;
+    }
+    await loadData();
+    if (p.id === me?.id) refreshMe();
+  }
+
   async function saveFullName(p: Profile, fullName: string) {
     const trimmed = fullName.trim();
     if (trimmed === (p.full_name ?? "")) return;
@@ -178,6 +196,7 @@ function StaffPageContent() {
                   <th className="px-4 py-3 font-medium">เบอร์โทร</th>
                   <th className="px-4 py-3 font-medium">เข้าร่วมเมื่อ</th>
                   <th className="px-4 py-3 font-medium">สิทธิ์การใช้งาน</th>
+                  <th className="px-4 py-3 font-medium">สาขา</th>
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
@@ -213,6 +232,14 @@ function StaffPageContent() {
                         value={p.role}
                         disabled={savingId === p.id}
                         onChange={(role) => changeRole(p, role)}
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <BranchSelect
+                        value={p.branch_id}
+                        branches={branches}
+                        disabled={savingId === p.id}
+                        onChange={(branchId) => saveBranch(p, branchId)}
                       />
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -261,6 +288,12 @@ function StaffPageContent() {
                     value={p.role}
                     disabled={savingId === p.id}
                     onChange={(role) => changeRole(p, role)}
+                  />
+                  <BranchSelect
+                    value={p.branch_id}
+                    branches={branches}
+                    disabled={savingId === p.id}
+                    onChange={(branchId) => saveBranch(p, branchId)}
                   />
                   <button
                     className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-neutral-200 py-2 text-sm font-medium text-brand-600"
@@ -391,12 +424,40 @@ function RoleSelect({
   );
 }
 
+function BranchSelect({
+  value,
+  branches,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  branches: { id: string; name: string }[];
+  disabled: boolean;
+  onChange: (branchId: string) => void;
+}) {
+  return (
+    <select
+      className="input w-full max-w-[220px] py-2"
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {branches.map((b) => (
+        <option key={b.id} value={b.id}>
+          {b.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 type AddStaffForm = {
   fullName: string;
   phone: string;
   email: string;
   password: string;
   role: Role;
+  branchId: string;
 };
 
 function AddStaffModal({
@@ -406,12 +467,14 @@ function AddStaffModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const { branches, activeBranchId } = useBranch();
   const [form, setForm] = useState<AddStaffForm>({
     fullName: "",
     phone: "",
     email: "",
     password: "",
     role: "staff",
+    branchId: activeBranchId ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -511,6 +574,22 @@ function AddStaffModal({
               {ROLE_ORDER.map((r) => (
                 <option key={r} value={r}>
                   {ROLE_LABELS[r]}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="สาขา * (พอเข้าแอปแล้วจะพาไปสาขานี้อัตโนมัติ)">
+            <select
+              className="input"
+              value={form.branchId}
+              onChange={(e) => set({ branchId: e.target.value })}
+              required
+            >
+              <option value="">— เลือกสาขา —</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
                 </option>
               ))}
             </select>
