@@ -37,6 +37,7 @@ function ShoppingListPageContent() {
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const [fromOtherBranch, setFromOtherBranch] = useState(false);
+  const [wantSkewered, setWantSkewered] = useState(false);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -90,6 +91,7 @@ function ShoppingListPageContent() {
       created_by: user?.id ?? null,
       branch_id: activeBranchId,
       target_branch_id: fromOtherBranch ? otherBranch?.id ?? null : null,
+      is_skewered: wantSkewered,
     });
     setAdding(false);
     if (error) {
@@ -99,6 +101,7 @@ function ShoppingListPageContent() {
     setName("");
     setNote("");
     setFromOtherBranch(false);
+    setWantSkewered(false);
     loadData();
   }
 
@@ -201,6 +204,20 @@ function ShoppingListPageContent() {
               </span>
             </label>
           )}
+          <label className="flex items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3">
+            <input
+              type="checkbox"
+              className="h-5 w-5 accent-brand-600"
+              checked={wantSkewered}
+              onChange={(e) => setWantSkewered(e.target.checked)}
+            />
+            <span className="text-sm font-medium">
+              เอาแบบเสียบไม้แล้ว{" "}
+              <span className="font-normal text-neutral-400">
+                (ไม่ติ๊ก = แพ็คดิบยังไม่เสียบ)
+              </span>
+            </span>
+          </label>
           {addError && (
             <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{addError}</p>
           )}
@@ -381,8 +398,17 @@ function ShoppingRow({
         onChange={onToggle}
       />
       <div className="min-w-0 flex-1">
-        <p className={`font-medium ${item.is_checked ? "text-neutral-400 line-through" : "text-neutral-900"}`}>
+        <p className={`flex flex-wrap items-center gap-1.5 font-medium ${item.is_checked ? "text-neutral-400 line-through" : "text-neutral-900"}`}>
           {item.name}
+          <span
+            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold no-underline ${
+              item.is_skewered
+                ? "bg-green-100 text-green-700"
+                : "bg-neutral-100 text-neutral-500"
+            }`}
+          >
+            {item.is_skewered ? "เสียบแล้ว" : "แพ็คดิบ"}
+          </span>
         </p>
         {item.note && (
           <p className="truncate text-xs text-neutral-400">{item.note}</p>

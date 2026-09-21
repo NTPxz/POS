@@ -288,6 +288,8 @@ export type ShoppingListItem = {
   branch_id: string;
   /** ไม่ว่าง = คำขอสั่งข้ามสาขา ให้สาขานี้เป็นคนเตรียม/ส่ง; ว่าง = ของที่ต้องซื้อในสาขาตัวเองตามปกติ */
   target_branch_id: string | null;
+  /** true = เอาแบบเสียบไม้แล้ว, false = แพ็คดิบยังไม่เสียบ */
+  is_skewered: boolean;
   created_by: string | null;
   checked_by: string | null;
   checked_at: string | null;

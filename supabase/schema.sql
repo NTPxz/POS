@@ -3684,3 +3684,9 @@ create policy "authenticated full access" on public.shopping_list_items
   for all to authenticated
   using (branch_id = public.my_branch_id() or target_branch_id = public.my_branch_id() or public.is_owner())
   with check (branch_id = public.my_branch_id() or target_branch_id = public.my_branch_id() or public.is_owner());
+
+-- ============================================================
+-- ของที่ต้องซื้อ: เพิ่มตัวเลือก "เอาแบบเสียบไม้แล้ว" หรือ "แพ็คดิบยังไม่เสียบ"
+-- (มีผลกับทั้งของสั่งข้ามสาขาและของซื้อในสาขาเอง) default = แพ็คดิบ
+-- ============================================================
+alter table public.shopping_list_items add column if not exists is_skewered boolean not null default false;
