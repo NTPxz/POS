@@ -3684,3 +3684,289 @@ create policy "authenticated full access" on public.shopping_list_items
   for all to authenticated
   using (branch_id = public.my_branch_id() or target_branch_id = public.my_branch_id() or public.is_owner())
   with check (branch_id = public.my_branch_id() or target_branch_id = public.my_branch_id() or public.is_owner());
+
+-- ============================================================
+-- แก้บั๊ก race condition: กดเพิ่มสินค้าเข้าคิวขายด่วน/โต๊ะพร้อมกันเร็วๆ (2 เครื่อง/2 นิ้วชนกัน)
+-- ทำให้ "เช็คว่ามีบิล open อยู่ไหม แล้วค่อยสร้างใหม่" เกิดสร้างบิล open ซ้อนกัน 2 ใบ
+-- ของคิว/โต๊ะเดียวกันได้ (เจอจริงที่คิว 1 สาขาสองแคว) ทำให้ตะกร้าที่เห็นหน้าจอไม่ตรงกับที่กดจริง
+-- แก้ด้วย unique index กันซ้อน + ใช้ on conflict do nothing ให้การสร้างบิล open เป็น atomic
+-- ============================================================
+create unique index if not exists idx_sales_open_per_queue on public.sales (queue_id) where status = 'open';
+create unique index if not exists idx_sales_open_per_table on public.sales (table_id) where status = 'open';
+
+create or replace function public.add_quick_sale_item(p_queue_id uuid, p_product_id uuid)
+returns table(sale_id uuid, sale_item_id uuid, quantity numeric)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_sale_id uuid;
+  v_product products%rowtype;
+  v_item_id uuid;
+  v_new_qty numeric;
+  v_branch_id uuid;
+  v_promo_discount numeric;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select * into v_product from products where id = p_product_id for update;
+  if not found then
+    raise exception 'ไม่พบสินค้า';
+  end if;
+
+  select branch_id into v_branch_id from quick_sale_queues where id = p_queue_id;
+  if v_branch_id is null then
+    raise exception 'ไม่พบคิวนี้';
+  end if;
+  if not (public.is_owner() or v_branch_id = public.my_branch_id()) then
+    raise exception 'ไม่มีสิทธิ์เข้าถึงคิวของสาขาอื่น';
+  end if;
+
+  select id into v_sale_id from sales
+    where queue_id = p_queue_id and status = 'open'
+    limit 1;
+
+  if v_sale_id is null then
+    insert into sales (queue_id, branch_id, subtotal, total, cost_total, payment_method, status, user_id)
+    values (p_queue_id, v_branch_id, 0, 0, 0, 'cash', 'open', auth.uid())
+    on conflict (queue_id) where status = 'open' do nothing
+    returning id into v_sale_id;
+
+    if v_sale_id is null then
+      select id into v_sale_id from sales where queue_id = p_queue_id and status = 'open' limit 1;
+    end if;
+  end if;
+
+  select id, sale_items.quantity into v_item_id, v_new_qty from sale_items
+    where sale_items.sale_id = v_sale_id and product_id = p_product_id
+    limit 1;
+
+  if v_item_id is null then
+    v_new_qty := 1;
+    -- ขายด่วนไม่มี workflow ครัว (pending/accepted/served) เหมือนโหมดเปิดโต๊ะ ถือว่า
+    -- "เสิร์ฟแล้ว" ทันทีที่กดเพิ่ม กัน status default 'pending' ไปโดนนับเป็นออเดอร์ค้างรับผิดๆ
+    -- created_by stamp ไว้ตอนสร้างแถวเท่านั้น (ไม่เปลี่ยนตอนคนอื่นกดเพิ่มจำนวนซ้ำทีหลัง)
+    insert into sale_items (sale_id, branch_id, product_id, product_name, price, cost, quantity, total, status, created_by)
+    values (v_sale_id, v_branch_id, v_product.id, v_product.name, v_product.price, v_product.cost, 1, v_product.price, 'served', auth.uid())
+    returning id into v_item_id;
+  else
+    v_new_qty := v_new_qty + 1;
+    update sale_items set quantity = v_new_qty, total = v_new_qty * price where id = v_item_id;
+  end if;
+
+  if v_product.track_stock then
+    update products set stock = stock - 1, updated_at = now() where id = v_product.id;
+  end if;
+
+  update sales set
+    subtotal = subtotal + v_product.price,
+    cost_total = cost_total + v_product.cost
+    where id = v_sale_id;
+
+  v_promo_discount := public.calculate_promo_discount(v_sale_id);
+  update sales set
+    discount = v_promo_discount,
+    total = greatest(subtotal - v_promo_discount, 0)
+    where id = v_sale_id;
+
+  return query select v_sale_id, v_item_id, v_new_qty;
+end;
+$$;
+
+create or replace function public.add_order_to_table(
+  p_table_id uuid,
+  p_items jsonb
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_sale_id uuid;
+  v_item jsonb;
+  v_product products%rowtype;
+  v_qty numeric;
+  v_line_total numeric;
+  v_line_cost numeric;
+  v_round_total numeric := 0;
+  v_round_count numeric := 0;
+  v_table_name text;
+  v_branch_id uuid;
+  v_promo_discount numeric;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+  if p_items is null or jsonb_array_length(p_items) = 0 then
+    raise exception 'ไม่มีรายการสินค้า';
+  end if;
+
+  select name, branch_id into v_table_name, v_branch_id from dining_tables where id = p_table_id;
+  if v_branch_id is null then
+    raise exception 'ไม่พบโต๊ะนี้';
+  end if;
+  if not (public.is_owner() or v_branch_id = public.my_branch_id()) then
+    raise exception 'ไม่มีสิทธิ์เข้าถึงโต๊ะของสาขาอื่น';
+  end if;
+
+  select id into v_sale_id from sales
+    where table_id = p_table_id and status = 'open'
+    limit 1;
+
+  if v_sale_id is null then
+    insert into sales (table_id, branch_id, subtotal, total, cost_total, payment_method, status, user_id)
+    values (p_table_id, v_branch_id, 0, 0, 0, 'cash', 'open', auth.uid())
+    on conflict (table_id) where status = 'open' do nothing
+    returning id into v_sale_id;
+
+    if v_sale_id is null then
+      select id into v_sale_id from sales where table_id = p_table_id and status = 'open' limit 1;
+    end if;
+  end if;
+
+  for v_item in select * from jsonb_array_elements(p_items) loop
+    v_qty := (v_item ->> 'quantity')::numeric;
+    if v_qty is null or v_qty <= 0 then
+      raise exception 'จำนวนสินค้าไม่ถูกต้อง';
+    end if;
+
+    select * into v_product from products
+      where id = (v_item ->> 'product_id')::uuid
+      for update;
+    if not found then
+      raise exception 'ไม่พบสินค้า (id: %)', v_item ->> 'product_id';
+    end if;
+
+    v_line_total := v_product.price * v_qty;
+    v_line_cost := v_product.cost * v_qty;
+    v_round_total := v_round_total + v_line_total;
+    v_round_count := v_round_count + v_qty;
+
+    insert into sale_items (sale_id, branch_id, product_id, product_name, price, cost, quantity, total, created_by)
+    values (v_sale_id, v_branch_id, v_product.id, v_product.name, v_product.price, v_product.cost, v_qty, v_line_total, auth.uid());
+
+    if v_product.track_stock then
+      update products set stock = stock - v_qty, updated_at = now() where id = v_product.id;
+    end if;
+
+    update sales set
+      subtotal = subtotal + v_line_total,
+      cost_total = cost_total + v_line_cost
+      where id = v_sale_id;
+  end loop;
+
+  v_promo_discount := public.calculate_promo_discount(v_sale_id);
+  update sales set
+    discount = v_promo_discount,
+    total = greatest(subtotal - v_promo_discount, 0)
+    where id = v_sale_id;
+
+  perform public.log_action('order', 'sales', v_sale_id::text,
+    format('สั่งอาหารเข้า%s: %s รายการ ยอด %s บาท', coalesce(v_table_name, 'โต๊ะ'), v_round_count, v_round_total),
+    v_branch_id);
+
+  return v_sale_id;
+end;
+$$;
+
+create or replace function public.customer_add_order(
+  p_table_id uuid,
+  p_items jsonb
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_table_active boolean;
+  v_table_name text;
+  v_branch_id uuid;
+  v_sale_id uuid;
+  v_item jsonb;
+  v_product products%rowtype;
+  v_qty numeric;
+  v_note text;
+  v_line_total numeric;
+  v_line_cost numeric;
+  v_round_total numeric := 0;
+  v_round_count numeric := 0;
+  v_promo_discount numeric;
+begin
+  select is_active, name, branch_id into v_table_active, v_table_name, v_branch_id
+    from dining_tables where id = p_table_id;
+  if v_table_active is null then
+    raise exception 'ไม่พบโต๊ะนี้';
+  end if;
+  if not v_table_active then
+    raise exception 'โต๊ะนี้ไม่พร้อมใช้งาน กรุณาติดต่อพนักงาน';
+  end if;
+  if p_items is null or jsonb_array_length(p_items) = 0 then
+    raise exception 'ไม่มีรายการสินค้า';
+  end if;
+
+  select id into v_sale_id from sales
+    where table_id = p_table_id and status = 'open'
+    limit 1;
+
+  if v_sale_id is null then
+    insert into sales (table_id, branch_id, subtotal, total, cost_total, payment_method, status, user_id)
+    values (p_table_id, v_branch_id, 0, 0, 0, 'cash', 'open', null)
+    on conflict (table_id) where status = 'open' do nothing
+    returning id into v_sale_id;
+
+    if v_sale_id is null then
+      select id into v_sale_id from sales where table_id = p_table_id and status = 'open' limit 1;
+    end if;
+  end if;
+
+  for v_item in select * from jsonb_array_elements(p_items) loop
+    v_qty := (v_item ->> 'quantity')::numeric;
+    if v_qty is null or v_qty <= 0 or v_qty > 99 then
+      raise exception 'จำนวนสินค้าไม่ถูกต้อง';
+    end if;
+    v_note := nullif(btrim(v_item ->> 'note'), '');
+    if v_note is not null and length(v_note) > 200 then
+      v_note := left(v_note, 200);
+    end if;
+
+    select * into v_product from products
+      where id = (v_item ->> 'product_id')::uuid and is_active = true
+      for update;
+    if not found then
+      raise exception 'ไม่พบสินค้า (id: %)', v_item ->> 'product_id';
+    end if;
+
+    v_line_total := v_product.price * v_qty;
+    v_line_cost := v_product.cost * v_qty;
+    v_round_total := v_round_total + v_line_total;
+    v_round_count := v_round_count + v_qty;
+
+    insert into sale_items (sale_id, branch_id, product_id, product_name, price, cost, quantity, total, ordered_by, note)
+    values (v_sale_id, v_branch_id, v_product.id, v_product.name, v_product.price, v_product.cost, v_qty, v_line_total, 'customer', v_note);
+
+    if v_product.track_stock then
+      update products set stock = stock - v_qty, updated_at = now() where id = v_product.id;
+    end if;
+
+    update sales set
+      subtotal = subtotal + v_line_total,
+      cost_total = cost_total + v_line_cost
+      where id = v_sale_id;
+  end loop;
+
+  v_promo_discount := public.calculate_promo_discount(v_sale_id);
+  update sales set
+    discount = v_promo_discount,
+    total = greatest(subtotal - v_promo_discount, 0)
+    where id = v_sale_id;
+
+  perform public.log_action('order', 'sales', v_sale_id::text,
+    format('ลูกค้าสั่งอาหารเข้า%s เอง: %s รายการ ยอด %s บาท', coalesce(v_table_name, 'โต๊ะ'), v_round_count, v_round_total),
+    v_branch_id);
+
+  return v_sale_id;
+end;
+$$;
