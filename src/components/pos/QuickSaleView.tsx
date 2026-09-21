@@ -99,6 +99,14 @@ export default function QuickSaleView({
     loadQueues();
   }, [loadQueues]);
 
+  // กันเหนียว: ถ้าคิวโหลดมาแล้วแต่ยังไม่ได้เลือกคิวใดเลย (เผื่อ state หลุดจากจังหวะแข่งกันของ
+  // realtime/โหลดซ้อน) ให้เลือกคิวแรกให้อัตโนมัติ ไม่งั้นกดเพิ่มสินค้าแล้วจะไม่มีอะไรเกิดขึ้นเลย
+  useEffect(() => {
+    if (!activeQueueId && queues.length > 0) {
+      setActiveQueueId(queues[0].id);
+    }
+  }, [activeQueueId, queues]);
+
   // เรียลไทม์: กันข้อมูลเพี้ยนถ้ามีคนแก้คิวเดียวกันจากอีกเครื่อง
   useEffect(() => {
     const channel = supabase
@@ -181,7 +189,10 @@ export default function QuickSaleView({
   const subtotal = cartItems.reduce((s, i) => s + Number(i.total), 0);
 
   async function addToCart(product: Product) {
-    if (!activeQueueId) return;
+    if (!activeQueueId) {
+      window.alert("ยังไม่ได้เลือกคิว กรุณาลองแตะแท็บคิวอีกครั้งแล้วลองใหม่");
+      return;
+    }
     const { error } = await supabase.rpc("add_quick_sale_item", {
       p_queue_id: activeQueueId,
       p_product_id: product.id,
