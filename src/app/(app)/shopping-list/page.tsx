@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, Plus, RefreshCw, ShoppingBasket, Trash2 } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeftRight,
+  Plus,
+  RefreshCw,
+  ShoppingBasket,
+  Trash2,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ShoppingListItem } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
@@ -17,12 +24,19 @@ export default function ShoppingListPage() {
 
 function ShoppingListPageContent() {
   const supabase = useMemo(() => createClient(), []);
-  const { activeBranchId } = useBranch();
+  const { activeBranchId, branches } = useBranch();
+  const otherBranch = branches.find((b) => b.id !== activeBranchId) ?? null;
+  const branchName = useCallback(
+    (id: string) => branches.find((b) => b.id === id)?.name ?? "อีกสาขา",
+    [branches]
+  );
+
   const [items, setItems] = useState<ShoppingListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
+  const [fromOtherBranch, setFromOtherBranch] = useState(false);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -33,7 +47,7 @@ function ShoppingListPageContent() {
     const { data, error } = await supabase
       .from("shopping_list_items")
       .select("*")
-      .eq("branch_id", activeBranchId)
+      .or(`branch_id.eq.${activeBranchId},target_branch_id.eq.${activeBranchId}`)
       .order("created_at", { ascending: false });
     if (error) {
       setLoadError(error.message);
@@ -47,7 +61,7 @@ function ShoppingListPageContent() {
     loadData();
   }, [loadData]);
 
-  // เห็นรายการเปลี่ยนแบบเรียลไทม์ เผื่อพนักงาน/เจ้าของร้านคนอื่นเพิ่ม/เช็คพร้อมกัน
+  // เห็นรายการเปลี่ยนแบบเรียลไทม์ เผื่อพนักงาน/เจ้าของร้านคนอื่นเพิ่ม/เช็คพร้อมกัน (ทั้งสาขาตัวเองและอีกสาขาที่สั่งข้ามมา)
   useEffect(() => {
     const channel = supabase
       .channel("shopping-list-live")
@@ -75,6 +89,7 @@ function ShoppingListPageContent() {
       note: note.trim() || null,
       created_by: user?.id ?? null,
       branch_id: activeBranchId,
+      target_branch_id: fromOtherBranch ? otherBranch?.id ?? null : null,
     });
     setAdding(false);
     if (error) {
@@ -83,6 +98,7 @@ function ShoppingListPageContent() {
     }
     setName("");
     setNote("");
+    setFromOtherBranch(false);
     loadData();
   }
 
@@ -121,12 +137,13 @@ function ShoppingListPageContent() {
   }
 
   async function clearChecked() {
-    if (!window.confirm("ล้างรายการที่ซื้อแล้วทั้งหมดออกจากลิสต์?")) return;
+    if (!activeBranchId) return;
+    if (!window.confirm("ล้างรายการที่เสร็จแล้วทั้งหมดออกจากลิสต์?")) return;
     const { error } = await supabase
       .from("shopping_list_items")
       .delete()
       .eq("is_checked", true)
-      .eq("branch_id", activeBranchId ?? "");
+      .or(`branch_id.eq.${activeBranchId},target_branch_id.eq.${activeBranchId}`);
     if (error) {
       window.alert(`ล้างไม่สำเร็จ: ${error.message}`);
       return;
@@ -134,8 +151,17 @@ function ShoppingListPageContent() {
     loadData();
   }
 
-  const pending = items.filter((i) => !i.is_checked);
-  const checked = items.filter((i) => i.is_checked);
+  // แยก 3 กลุ่ม: ของที่ต้องซื้อในสาขาตัวเอง / ที่สั่งข้ามไปให้อีกสาขาเตรียม / คำขอจากอีกสาขาที่เราต้องเตรียมส่งให้
+  const localItems = items.filter((i) => i.branch_id === activeBranchId && !i.target_branch_id);
+  const outgoingItems = items.filter((i) => i.branch_id === activeBranchId && i.target_branch_id);
+  const incomingItems = items.filter(
+    (i) => i.target_branch_id === activeBranchId && i.branch_id !== activeBranchId
+  );
+
+  const localPending = localItems.filter((i) => !i.is_checked);
+  const outgoingPending = outgoingItems.filter((i) => !i.is_checked);
+  const incomingPending = incomingItems.filter((i) => !i.is_checked);
+  const allChecked = items.filter((i) => i.is_checked);
 
   return (
     <div className="min-w-0 flex-1 p-4 md:p-6">
@@ -155,12 +181,26 @@ function ShoppingListPageContent() {
             />
             <input
               className="input"
-              placeholder="หมายเหตุ เช่น 2 ขวด (ถ้ามี)"
+              placeholder="หมายเหตุ เช่น 2 ขวด/50 ไม้ (ถ้ามี)"
               value={note}
               onChange={(e) => setNote(e.target.value)}
               maxLength={200}
             />
           </div>
+          {otherBranch && (
+            <label className="flex items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3">
+              <input
+                type="checkbox"
+                className="h-5 w-5 accent-brand-600"
+                checked={fromOtherBranch}
+                onChange={(e) => setFromOtherBranch(e.target.checked)}
+              />
+              <span className="flex items-center gap-1.5 text-sm font-medium">
+                <ArrowLeftRight className="h-4 w-4 text-brand-600" strokeWidth={2} />
+                สั่งจาก{otherBranch.name} (ไม่ใช่ซื้อจากภายนอก)
+              </span>
+            </label>
+          )}
           {addError && (
             <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{addError}</p>
           )}
@@ -191,40 +231,106 @@ function ShoppingListPageContent() {
             <p>ยังไม่มีรายการของที่ต้องซื้อ</p>
           </div>
         ) : (
-          <div className="space-y-5">
-            {pending.length > 0 && (
-              <ul className="space-y-2">
-                {pending.map((item) => (
-                  <ShoppingRow
-                    key={item.id}
-                    item={item}
-                    busy={busyId === item.id}
-                    onToggle={() => toggleChecked(item)}
-                    onDelete={() => deleteItem(item)}
-                  />
-                ))}
-              </ul>
+          <div className="space-y-6">
+            {incomingPending.length > 0 && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase text-amber-600">
+                  {branchName(incomingItems[0]?.branch_id)}ขอให้เราเตรียม/ส่งให้ (
+                  {incomingPending.length})
+                </p>
+                <ul className="space-y-2">
+                  {incomingPending.map((item) => (
+                    <ShoppingRow
+                      key={item.id}
+                      item={item}
+                      busy={busyId === item.id}
+                      checkedLabel="ส่งแล้ว"
+                      tone="incoming"
+                      onToggle={() => toggleChecked(item)}
+                      onDelete={() => deleteItem(item)}
+                    />
+                  ))}
+                </ul>
+              </div>
             )}
 
-            {checked.length > 0 && (
+            {localPending.length > 0 && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase text-neutral-400">
+                  ของที่ต้องซื้อในสาขา ({localPending.length})
+                </p>
+                <ul className="space-y-2">
+                  {localPending.map((item) => (
+                    <ShoppingRow
+                      key={item.id}
+                      item={item}
+                      busy={busyId === item.id}
+                      checkedLabel="ซื้อแล้ว"
+                      tone="local"
+                      onToggle={() => toggleChecked(item)}
+                      onDelete={() => deleteItem(item)}
+                    />
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {outgoingPending.length > 0 && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase text-brand-600">
+                  สั่งจาก{branchName(outgoingItems[0]?.target_branch_id ?? "")} — รอส่ง (
+                  {outgoingPending.length})
+                </p>
+                <ul className="space-y-2">
+                  {outgoingPending.map((item) => (
+                    <ShoppingRow
+                      key={item.id}
+                      item={item}
+                      busy={busyId === item.id}
+                      checkedLabel="ได้รับแล้ว"
+                      tone="outgoing"
+                      onToggle={() => toggleChecked(item)}
+                      onDelete={() => deleteItem(item)}
+                    />
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {allChecked.length > 0 && (
               <div>
                 <div className="mb-2 flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase text-neutral-400">
-                    ซื้อแล้ว ({checked.length})
+                    เสร็จแล้ว ({allChecked.length})
                   </p>
                   <button
                     className="text-xs font-medium text-red-500 hover:underline"
                     onClick={clearChecked}
                   >
-                    ล้างรายการที่ซื้อแล้ว
+                    ล้างรายการที่เสร็จแล้ว
                   </button>
                 </div>
                 <ul className="space-y-2">
-                  {checked.map((item) => (
+                  {allChecked.map((item) => (
                     <ShoppingRow
                       key={item.id}
                       item={item}
                       busy={busyId === item.id}
+                      checkedLabel="เสร็จแล้ว"
+                      tone={
+                        item.target_branch_id === activeBranchId && item.branch_id !== activeBranchId
+                          ? "incoming"
+                          : item.target_branch_id
+                            ? "outgoing"
+                            : "local"
+                      }
+                      subLabel={
+                        item.target_branch_id === activeBranchId && item.branch_id !== activeBranchId
+                          ? `จาก${branchName(item.branch_id)}`
+                          : item.target_branch_id
+                            ? `สั่งจาก${branchName(item.target_branch_id)}`
+                            : undefined
+                      }
                       onToggle={() => toggleChecked(item)}
                       onDelete={() => deleteItem(item)}
                     />
@@ -242,16 +348,31 @@ function ShoppingListPageContent() {
 function ShoppingRow({
   item,
   busy,
+  checkedLabel,
+  tone,
+  subLabel,
   onToggle,
   onDelete,
 }: {
   item: ShoppingListItem;
   busy: boolean;
+  checkedLabel: string;
+  tone: "local" | "outgoing" | "incoming";
+  subLabel?: string;
   onToggle: () => void;
   onDelete: () => void;
 }) {
+  const toneClass =
+    tone === "incoming"
+      ? "border-amber-200 bg-amber-50/60"
+      : tone === "outgoing"
+        ? "border-brand-200 bg-brand-50/40"
+        : "";
+
   return (
-    <li className={`card flex items-center gap-3 p-3.5 ${item.is_checked ? "opacity-60" : ""}`}>
+    <li
+      className={`card flex items-center gap-3 border p-3.5 ${toneClass} ${item.is_checked ? "opacity-60" : ""}`}
+    >
       <input
         type="checkbox"
         className="h-5 w-5 shrink-0 accent-brand-600"
@@ -265,6 +386,12 @@ function ShoppingRow({
         </p>
         {item.note && (
           <p className="truncate text-xs text-neutral-400">{item.note}</p>
+        )}
+        {subLabel && <p className="truncate text-xs text-neutral-400">{subLabel}</p>}
+        {!item.is_checked && tone !== "local" && (
+          <p className="text-[11px] font-medium text-neutral-400">
+            แตะช่องเมื่อ{checkedLabel === "ส่งแล้ว" ? "ส่งของนี้แล้ว" : "ได้รับของนี้แล้ว"}
+          </p>
         )}
       </div>
       <button

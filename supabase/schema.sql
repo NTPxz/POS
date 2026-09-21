@@ -3668,3 +3668,19 @@ $$;
 
 revoke execute on function public.update_product from public, anon;
 grant execute on function public.update_product to authenticated;
+
+-- ============================================================
+-- ของที่ต้องซื้อ: รองรับ "สั่งข้ามสาขา" นอกเหนือจากซื้อจากภายนอกร้านแบบเดิม
+-- target_branch_id ว่าง = รายการซื้อของในสาขาตัวเองตามปกติ
+-- target_branch_id มีค่า = ขอให้สาขานั้น (ปกติคือหนองตุ้ม<->สองแคว) เตรียม/ส่งให้
+-- ทั้งฝั่งขอ (branch_id) และฝั่งที่ต้องส่ง (target_branch_id) เห็น/แก้รายการนี้ได้ทั้งคู่
+-- ไม่ตัด/บวกสต๊อกสินค้าอัตโนมัติ — เป็นแค่เช็คลิสต์ติดตามสถานะ พนักงานยังนับสต๊อกเองแยกต่างหาก
+-- ============================================================
+alter table public.shopping_list_items add column if not exists target_branch_id uuid references public.branches (id);
+create index if not exists idx_shopping_list_items_target_branch on public.shopping_list_items (target_branch_id);
+
+drop policy if exists "authenticated full access" on public.shopping_list_items;
+create policy "authenticated full access" on public.shopping_list_items
+  for all to authenticated
+  using (branch_id = public.my_branch_id() or target_branch_id = public.my_branch_id() or public.is_owner())
+  with check (branch_id = public.my_branch_id() or target_branch_id = public.my_branch_id() or public.is_owner());
