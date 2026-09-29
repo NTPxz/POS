@@ -2820,7 +2820,8 @@ begin
     received = p_received,
     change = case when p_received is not null then greatest(p_received - v_total, 0) end,
     note = p_note,
-    status = 'completed'
+    status = 'completed',
+    created_at = now()  -- ลงเวลาขายเป็นตอนเก็บเงินจริง ไม่ใช่ตอนเปิดบิล (บิลเปิดค้างข้ามวันจะไม่หายจากประวัติขายวันนี้)
     where id = p_sale_id;
 
   perform public.log_action('checkout', 'sales', p_sale_id::text,
@@ -3378,7 +3379,8 @@ begin
     received = p_received,
     change = case when p_received is not null then greatest(p_received - v_total, 0) end,
     note = p_note,
-    status = 'completed'
+    status = 'completed',
+    created_at = now()  -- ลงเวลาขายเป็นตอนเก็บเงินจริง ไม่ใช่ตอนเปิดบิล (บิลเปิดค้างข้ามวันจะไม่หายจากประวัติขายวันนี้)
     where id = p_sale_id;
 
   perform public.log_action('checkout', 'sales', p_sale_id::text,
