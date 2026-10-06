@@ -825,6 +825,7 @@ declare
   v_sale_status text;
   v_product_name text;
   v_table_name text;
+  v_branch_id uuid;
 begin
   if p_status not in ('pending', 'accepted', 'served') then
     raise exception 'สถานะไม่ถูกต้อง';
@@ -836,9 +837,12 @@ begin
     raise exception 'ไม่พบรายการนี้';
   end if;
 
-  select status into v_sale_status from sales where id = v_sale_id;
+  select status, branch_id into v_sale_status, v_branch_id from sales where id = v_sale_id;
   if v_sale_status is distinct from 'open' then
     raise exception 'บิลนี้ปิดไปแล้ว แก้ไขสถานะไม่ได้';
+  end if;
+  if not (public.is_owner() or v_branch_id = public.my_branch_id()) then
+    raise exception 'ไม่มีสิทธิ์เข้าถึงบิลของสาขาอื่น';
   end if;
 
   update sale_items set status = p_status where id = p_sale_item_id;
@@ -853,7 +857,8 @@ begin
         when 'accepted' then 'รับออเดอร์แล้ว'
         when 'served' then 'เสิร์ฟแล้ว'
         else 'รอรับออเดอร์'
-      end));
+      end),
+    v_branch_id);
 end;
 $$;
 
