@@ -121,8 +121,13 @@ function ProductsPageContent() {
     setModalOpen(true);
   }
 
-  function openEdit(p: Product) {
-    setEditing(p);
+  async function openEdit(p: Product) {
+    // รายการสินค้าโหลดครั้งเดียวตอนเปิดหน้า สต๊อกบนจออาจเก่าแล้ว (มีการขายตัดไประหว่างนั้น)
+    // ดึงแถวล่าสุดก่อนเปิดฟอร์ม พนักงานจะได้เห็นและนับต่อจากเลขจริง
+    const { data } = await supabase.from("products").select("*").eq("id", p.id).maybeSingle();
+    const fresh = (data as Product | null) ?? p;
+    setProducts((prev) => prev.map((item) => (item.id === fresh.id ? fresh : item)));
+    setEditing(fresh);
     setModalOpen(true);
   }
 
@@ -376,10 +381,10 @@ function ProductModal({
     setSaving(true);
     setError(null);
     const nextStock = parseFloat(form.stock) || 0;
-    // ฟอร์มโหลดค่า stock แค่ตอนเปิดครั้งแรก ถ้าเปิดฟอร์มค้างไว้แก้เรื่องอื่น (เช่นราคา) โดยไม่ได้
-    // แตะช่องนี้เลย แล้วระหว่างนั้นมีการขายตัดสต๊อกไปแล้ว การเซฟจะทับสต๊อกด้วยเลขเก่าที่ค้างอยู่
-    // ทำให้ยอดขายที่เพิ่งตัดไปหายไปเฉยๆ จึงส่ง stock ไปอัปเดตเฉพาะตอนพนักงานแก้เลขนี้จริงๆ เท่านั้น
-    const stockChanged = !product || nextStock !== product.stock;
+    // ฟอร์มโหลดค่า stock แค่ตอนเปิดครั้งแรก ระหว่างเปิดฟอร์มค้างไว้อาจมีการขายตัดสต๊อกไปแล้ว
+    // ถ้าส่งเลขตรงๆ ไปเขียนทับ ยอดที่เพิ่งขายตัดไปจะหายเฉยๆ จึงส่งเฉพาะส่วนต่างที่พนักงานแก้
+    // (เช่นเติม +10) ไปบวกกับสต๊อกล่าสุดในฐานข้อมูลแทน ไม่แตะช่องนี้ = ส่วนต่าง 0 ไม่เปลี่ยนสต๊อก
+    const stockDelta = product ? nextStock - product.stock : 0;
 
     const { error } = product
       ? await supabase.rpc("update_product", {
@@ -389,7 +394,7 @@ function ProductModal({
           p_category_id: form.category_id || null,
           p_price: price,
           p_cost: cost,
-          p_stock: stockChanged ? nextStock : null,
+          p_stock_delta: stockDelta !== 0 ? stockDelta : null,
           p_track_stock: form.track_stock,
           p_low_stock_threshold: parseFloat(form.low_stock_threshold) || 0,
           p_stock_group: form.stock_group || null,

@@ -3977,3 +3977,74 @@ begin
   return v_sale_id;
 end;
 $$;
+
+
+-- ============================================================
+-- update_product: แก้สต๊อกแบบ "บวก/ลบเพิ่ม" (p_stock_delta) แทนการเขียนทับเลขตรงๆ
+-- หน้าจัดการสินค้าโหลดรายการสินค้าครั้งเดียวตอนเปิดหน้า ถ้าเปิดค้างไว้แล้วระหว่างนั้นมีการขาย
+-- ตัดสต๊อกไป พอพนักงานกด +/- เติมของแล้วเซฟ เลขที่ส่งไปคำนวณจากยอดเก่าที่ค้างบนจอ
+-- (p_stock แบบ absolute) จึงเขียนทับยอดที่ขายตัดไปแล้วหายไปเฉยๆ สต๊อกเลยไม่ตรงกับที่ขายจริง
+-- ฟอร์มส่ง p_stock_delta = (เลขที่พนักงานตั้ง - เลขที่เห็นตอนเปิดฟอร์ม) แล้วไปบวกกับสต๊อก
+-- ปัจจุบันในฐานข้อมูล ยอดที่ขายตัดระหว่างนั้นจะไม่หาย (p_stock ยังรับไว้ให้ client เก่าใช้ได้)
+-- ============================================================
+drop function if exists public.update_product(uuid, text, text, uuid, numeric, numeric, numeric, boolean, numeric, text, text);
+
+create or replace function public.update_product(
+  p_id uuid,
+  p_name text,
+  p_barcode text,
+  p_category_id uuid,
+  p_price numeric,
+  p_cost numeric,
+  p_stock numeric default null,
+  p_track_stock boolean default true,
+  p_low_stock_threshold numeric default 5,
+  p_stock_group text default null,
+  p_image_url text default null,
+  p_stock_delta numeric default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_branch_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'ต้องล็อกอินก่อน';
+  end if;
+
+  select branch_id into v_branch_id from products where id = p_id;
+  if v_branch_id is null then
+    raise exception 'ไม่พบสินค้า';
+  end if;
+  if not (public.is_owner() or v_branch_id = public.my_branch_id()) then
+    raise exception 'ไม่มีสิทธิ์เข้าถึงสินค้าของสาขาอื่น';
+  end if;
+
+  update products set
+    name = p_name,
+    barcode = p_barcode,
+    category_id = p_category_id,
+    price = p_price,
+    cost = p_cost,
+    stock = case
+      when p_stock_delta is not null then stock + p_stock_delta
+      else coalesce(p_stock, stock)
+    end,
+    track_stock = p_track_stock,
+    low_stock_threshold = p_low_stock_threshold,
+    stock_group = p_stock_group,
+    image_url = p_image_url,
+    updated_by = auth.uid(),
+    updated_at = now()
+    where id = p_id;
+
+  if not found then
+    raise exception 'ไม่พบสินค้า';
+  end if;
+end;
+$$;
+
+revoke execute on function public.update_product from public, anon;
+grant execute on function public.update_product to authenticated;
