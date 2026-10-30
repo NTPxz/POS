@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { shopStorageKey } from "@/lib/shops";
 import { Branch } from "@/lib/types";
 import { useProfile } from "@/components/ProfileProvider";
 
@@ -60,7 +61,7 @@ export default function BranchProvider({
     }
     if (profile.role === "owner") {
       const saved =
-        typeof window !== "undefined" ? localStorage.getItem(ACTIVE_BRANCH_KEY) : null;
+        typeof window !== "undefined" ? localStorage.getItem(shopStorageKey(ACTIVE_BRANCH_KEY)) : null;
       setActiveBranchIdState(saved || profile.branch_id);
     } else {
       // พนักงาน/ผู้จัดการล็อกตามสาขาหลักเสมอ สลับเองไม่ได้
@@ -74,7 +75,7 @@ export default function BranchProvider({
       if (!canSwitchBranch) return;
       setActiveBranchIdState(id);
       if (typeof window !== "undefined") {
-        localStorage.setItem(ACTIVE_BRANCH_KEY, id);
+        localStorage.setItem(shopStorageKey(ACTIVE_BRANCH_KEY), id);
       }
     },
     [canSwitchBranch]

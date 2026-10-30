@@ -1,15 +1,18 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { AUTH_COOKIE_MAX_AGE } from "@/lib/supabase/cookie-options";
+import type { Shop } from "@/lib/shops";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-export function createClient() {
+export function createClient(shop: Shop): SupabaseClient {
   const cookieStore = cookies();
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      cookieOptions: { maxAge: AUTH_COOKIE_MAX_AGE },
+      db: { schema: shop.dbSchema },
+      cookieOptions: { maxAge: AUTH_COOKIE_MAX_AGE, name: shop.authCookieName },
       cookies: {
         getAll() {
           return cookieStore.getAll();
@@ -31,5 +34,5 @@ export function createClient() {
         },
       },
     }
-  );
+  ) as unknown as SupabaseClient;
 }

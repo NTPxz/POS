@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useState } from "react";
 import { useRouter } from "next/navigation";
+import { currentShop, shopHref } from "@/lib/shops";
 
 type TableAlertContextValue = {
   /** มีแจ้งเตือนค้างอยู่ (ลูกค้าสั่งของ/เรียกเก็บเงิน) ที่ยังไม่ได้ดู */
@@ -63,7 +64,7 @@ export default function TableAlertProvider({
       setAlertTableId(null);
       setFocusTables(true);
       setFocusTableId(tableId ?? null);
-      router.push("/");
+      router.push(shopHref(currentShop(), "/"));
     },
     [router]
   );

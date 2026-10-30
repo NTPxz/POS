@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Image from "next/image";
 import {
   AlertCircle,
   Bell,
@@ -12,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import ShopLogo from "@/components/ShopLogo";
 import { baht, formatNumber } from "@/lib/format";
 import {
   Category,
@@ -239,7 +239,7 @@ export default function CustomerOrderPage({
     <div className="flex min-h-dvh flex-col bg-neutral-100">
       <header className="flex items-center gap-3 border-b border-neutral-200 bg-white px-4 py-3">
         <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg">
-          <Image src="/logo.png" alt="โลโก้ร้าน" width={36} height={36} className="h-full w-full object-cover" />
+          <ShopLogo size={36} />
         </div>
         <div>
           <p className="font-bold leading-tight">{table.name}</p>

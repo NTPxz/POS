@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Bell, Pencil, Receipt, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { currentShop } from "@/lib/shops";
 import { useProfile } from "@/components/ProfileProvider";
 import { useBranch } from "@/components/BranchProvider";
 import { useTableAlert } from "@/components/TableAlertProvider";
@@ -151,7 +152,7 @@ export default function OrderNotifications() {
       .channel("staff-order-notifications")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "sale_items", filter: "ordered_by=eq.customer" },
+        { event: "INSERT", schema: currentShop().dbSchema, table: "sale_items", filter: "ordered_by=eq.customer" },
         (payload) => {
           const row = payload.new as {
             sale_id: string;
@@ -173,7 +174,7 @@ export default function OrderNotifications() {
       )
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "sales" },
+        { event: "UPDATE", schema: currentShop().dbSchema, table: "sales" },
         async (payload) => {
           const row = payload.new as {
             id: string;
@@ -212,7 +213,7 @@ export default function OrderNotifications() {
       .channel("owner-order-edit-requests")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "order_edit_requests" },
+        { event: "INSERT", schema: currentShop().dbSchema, table: "order_edit_requests" },
         async (payload) => {
           const row = payload.new as {
             sale_id: string;

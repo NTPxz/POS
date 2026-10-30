@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { currentShop } from "@/lib/shops";
 import { formatDate } from "@/lib/format";
 import { Profile, Role, ROLE_LABELS } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
@@ -486,7 +487,7 @@ function AddStaffModal({
     e.preventDefault();
     setSaving(true);
     setError(null);
-    const res = await fetch("/api/staff/create", {
+    const res = await fetch(`${currentShop().basePath}/api/staff/create`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
@@ -631,7 +632,7 @@ function ResetPasswordModal({
     e.preventDefault();
     setSaving(true);
     setError(null);
-    const res = await fetch("/api/staff/reset-password", {
+    const res = await fetch(`${currentShop().basePath}/api/staff/reset-password`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: staff.id, password }),

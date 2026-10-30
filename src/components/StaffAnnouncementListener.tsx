@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Megaphone, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { shopStorageKey, currentShop } from "@/lib/shops";
 import { formatDateTime } from "@/lib/format";
 import { Announcement } from "@/lib/types";
 import { useProfile } from "@/components/ProfileProvider";
@@ -20,7 +21,7 @@ export default function StaffAnnouncementListener() {
 
   const showIfUnseen = useCallback(
     (a: Announcement) => {
-      const dismissedId = localStorage.getItem(DISMISSED_KEY);
+      const dismissedId = localStorage.getItem(shopStorageKey(DISMISSED_KEY));
       if (dismissedId !== a.id) {
         setCurrent(a);
         playMelody(ANNOUNCEMENT_NOTES, { repeats: 3 });
@@ -47,7 +48,7 @@ export default function StaffAnnouncementListener() {
       .channel("staff-announcements")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "announcements" },
+        { event: "INSERT", schema: currentShop().dbSchema, table: "announcements" },
         (payload) => {
           const row = payload.new as Announcement;
           if (row.branch_id !== activeBranchId) return;
@@ -63,7 +64,7 @@ export default function StaffAnnouncementListener() {
 
   function dismiss() {
     stopChime();
-    if (current) localStorage.setItem(DISMISSED_KEY, current.id);
+    if (current) localStorage.setItem(shopStorageKey(DISMISSED_KEY), current.id);
     setCurrent(null);
   }
 

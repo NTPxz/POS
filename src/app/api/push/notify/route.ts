@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import webpush from "web-push";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { shopFromPathname, shopHref } from "@/lib/shops";
 
 type PushPayload = {
   type: "order" | "bill" | "announcement" | "order_edit" | "order_edit_request";
@@ -61,6 +62,8 @@ function buildNotification(payload: PushPayload) {
 }
 
 export async function POST(request: Request) {
+  // route นี้ถูก re-export ไว้ใต้ /rompho/api ด้วย จึงดูร้านจาก path ที่ถูกเรียก
+  const shop = shopFromPathname(new URL(request.url).pathname);
   const secret = request.headers.get("x-push-secret");
   if (!secret || secret !== process.env.PUSH_TRIGGER_SECRET) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -79,7 +82,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid payload" }, { status: 400 });
   }
 
-  const admin = createAdminClient();
+  const admin = createAdminClient(shop);
   const { data: subs, error } = await admin
     .from("push_subscriptions")
     .select("id, endpoint, p256dh, auth");
@@ -102,7 +105,7 @@ export async function POST(request: Request) {
             endpoint: sub.endpoint,
             keys: { p256dh: sub.p256dh, auth: sub.auth },
           },
-          JSON.stringify(notification)
+          JSON.stringify({ ...notification, url: shopHref(shop, "/") })
         );
         sent += 1;
       } catch (err) {

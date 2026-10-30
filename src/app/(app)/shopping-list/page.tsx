@@ -10,6 +10,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { currentShop } from "@/lib/shops";
 import { ShoppingListItem } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
 import { useBranch } from "@/components/BranchProvider";
@@ -67,7 +68,7 @@ function ShoppingListPageContent() {
       .channel("shopping-list-live")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "shopping_list_items" },
+        { event: "*", schema: currentShop().dbSchema, table: "shopping_list_items" },
         () => loadData()
       )
       .subscribe();

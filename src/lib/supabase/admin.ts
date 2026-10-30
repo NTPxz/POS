@@ -1,11 +1,13 @@
 import "server-only";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Shop } from "@/lib/shops";
 
 /**
  * ใช้ service role key ซึ่งข้าม RLS ทั้งหมด — เรียกได้เฉพาะจาก
  * Route Handler ฝั่งเซิร์ฟเวอร์เท่านั้น ห้าม import จาก client component เด็ดขาด
  */
-export function createAdminClient() {
+export function createAdminClient(shop: Shop): SupabaseClient {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceRoleKey) {
     throw new Error(
@@ -15,6 +17,9 @@ export function createAdminClient() {
   return createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     serviceRoleKey,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
+    {
+      db: { schema: shop.dbSchema },
+      auth: { autoRefreshToken: false, persistSession: false },
+    }
+  ) as unknown as SupabaseClient;
 }

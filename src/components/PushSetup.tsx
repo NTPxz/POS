@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { BellRing, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { shopStorageKey } from "@/lib/shops";
 import { useProfile } from "@/components/ProfileProvider";
 import { isPushSupported, subscribeToPush } from "@/lib/push";
 
@@ -23,7 +24,7 @@ export default function PushSetup() {
       return;
     }
     if (Notification.permission === "denied") return;
-    if (localStorage.getItem(DISMISS_KEY)) return;
+    if (localStorage.getItem(shopStorageKey(DISMISS_KEY))) return;
     setShowBanner(true);
   }, [profile]);
 
@@ -64,7 +65,7 @@ export default function PushSetup() {
   }
 
   function dismiss() {
-    localStorage.setItem(DISMISS_KEY, "1");
+    localStorage.setItem(shopStorageKey(DISMISS_KEY), "1");
     setShowBanner(false);
   }
 

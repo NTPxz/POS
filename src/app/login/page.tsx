@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
+import ShopLogo from "@/components/ShopLogo";
+import { useShop } from "@/lib/useShop";
+import { shopHref } from "@/lib/shops";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const router = useRouter();
+  const shop = useShop();
   const supabase = createClient();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -35,7 +38,7 @@ export default function LoginPage() {
       email = resolvedEmail;
     }
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data: signIn, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -44,7 +47,19 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
-    router.push("/");
+    // บัญชีใช้ระบบ auth ร่วมกันทุกร้าน ล็อกอินผ่านแล้วต้องเช็กว่าเป็นคนของร้านนี้จริง
+    const { data: membership } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", signIn.user.id)
+      .maybeSingle();
+    if (!membership) {
+      await supabase.auth.signOut({ scope: "local" });
+      setError("บัญชีนี้ไม่ได้อยู่ในร้านนี้ กรุณาใช้บัญชีของร้านนี้");
+      setLoading(false);
+      return;
+    }
+    router.push(shopHref(shop, "/"));
     router.refresh();
   }
 
@@ -53,16 +68,11 @@ export default function LoginPage() {
       <div className="w-full max-w-sm rounded-3xl bg-white p-8 shadow-2xl">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-3 h-16 w-16 overflow-hidden rounded-2xl shadow-sm">
-            <Image
-              src="/logo.png"
-              alt="โลโก้ร้าน"
-              width={64}
-              height={64}
-              className="h-full w-full object-cover"
-              priority
-            />
+            <ShopLogo size={64} priority />
           </div>
-          <h1 className="text-2xl font-bold">ระบบขายหน้าร้าน</h1>
+          <h1 className="text-2xl font-bold">
+            {shop.basePath ? shop.label : "ระบบขายหน้าร้าน"}
+          </h1>
           <p className="mt-1 text-sm text-neutral-500">
             เข้าสู่ระบบเพื่อเริ่มขาย
           </p>

@@ -1,15 +1,24 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_COOKIE_MAX_AGE } from "@/lib/supabase/cookie-options";
+import { shopFromPathname, shopHref, stripBasePath } from "@/lib/shops";
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
+
+  const shop = shopFromPathname(request.nextUrl.pathname);
+  const path = stripBasePath(shop, request.nextUrl.pathname);
+
+  // matcher ด้านล่างยกเว้น /api และ /order ได้เฉพาะของร้านหลัก ส่วนของร้านอื่นต้องเช็กตรงนี้
+  if (path.startsWith("/api") || path.startsWith("/order")) {
+    return response;
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      cookieOptions: { maxAge: AUTH_COOKIE_MAX_AGE },
+      cookieOptions: { maxAge: AUTH_COOKIE_MAX_AGE, name: shop.authCookieName },
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -37,17 +46,17 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isLoginPage = request.nextUrl.pathname.startsWith("/login");
+  const isLoginPage = path.startsWith("/login");
 
   if (!user && !isLoginPage) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = shopHref(shop, "/login");
     return NextResponse.redirect(url);
   }
 
   if (user && isLoginPage) {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = shopHref(shop, "/");
     return NextResponse.redirect(url);
   }
 

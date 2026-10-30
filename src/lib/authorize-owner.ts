@@ -1,8 +1,9 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import type { Shop } from "@/lib/shops";
 
-export async function requireOwner() {
-  const supabase = createClient();
+export async function requireOwner(shop: Shop) {
+  const supabase = createClient(shop);
   const {
     data: { user },
   } = await supabase.auth.getUser();

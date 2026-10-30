@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, Lightbulb, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { currentShop } from "@/lib/shops";
 import { formatDateTime } from "@/lib/format";
 import { BusinessPlan } from "@/lib/types";
 import RequireRole from "@/components/RequireRole";
@@ -53,7 +54,7 @@ function PlansPageContent() {
       .channel("business-plans-live")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "business_plans" },
+        { event: "*", schema: currentShop().dbSchema, table: "business_plans" },
         () => loadData()
       )
       .subscribe();

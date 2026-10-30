@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { currentShop } from "@/lib/shops";
 import { baht, formatDateTime, formatNumber } from "@/lib/format";
 import { PENDING_ORDER_REMINDER_MS } from "@/lib/constants";
 import {
@@ -114,7 +115,7 @@ export default function TablesView({
   useEffect(() => {
     const channel = supabase
       .channel("tables-grid-live")
-      .on("postgres_changes", { event: "*", schema: "public", table: "sales" }, () => {
+      .on("postgres_changes", { event: "*", schema: currentShop().dbSchema, table: "sales" }, () => {
         loadTables(true);
       })
       .subscribe();
@@ -1260,7 +1261,7 @@ function TableQrModal({
   const [url, setUrl] = useState("");
 
   useEffect(() => {
-    const orderUrl = `${window.location.origin}/order/${table.id}`;
+    const orderUrl = `${window.location.origin}${currentShop().basePath}/order/${table.id}`;
     setUrl(orderUrl);
     import("qrcode").then((QRCode) => {
       QRCode.toDataURL(orderUrl, { width: 480, margin: 2 }).then(setDataUrl);

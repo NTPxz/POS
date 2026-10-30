@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { currentShop } from "@/lib/shops";
 import { baht, formatNumber } from "@/lib/format";
 import {
   Category,
@@ -111,12 +112,12 @@ export default function QuickSaleView({
   useEffect(() => {
     const channel = supabase
       .channel("quick-sale-queues-live")
-      .on("postgres_changes", { event: "*", schema: "public", table: "sales" }, () =>
+      .on("postgres_changes", { event: "*", schema: currentShop().dbSchema, table: "sales" }, () =>
         loadQueues(true)
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "quick_sale_queues" },
+        { event: "*", schema: currentShop().dbSchema, table: "quick_sale_queues" },
         () => loadQueues(true)
       )
       .subscribe();

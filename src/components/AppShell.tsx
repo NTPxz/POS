@@ -1,6 +1,8 @@
 "use client";
 
-import Image from "next/image";
+import ShopLogo from "@/components/ShopLogo";
+import { useShop } from "@/lib/useShop";
+import { shopHref } from "@/lib/shops";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -58,6 +60,7 @@ const NAV_ITEMS: {
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const shop = useShop();
   const { profile } = useProfile();
   const role = profile?.role ?? "staff";
   const visibleItems = NAV_ITEMS.filter((item) => hasRole(role, item.minRole));
@@ -71,7 +74,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   async function handleLogout() {
     const supabase = createClient();
     await supabase.auth.signOut();
-    router.push("/login");
+    router.push(shopHref(shop, "/login"));
     router.refresh();
   }
 
@@ -84,17 +87,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-neutral-200 bg-white md:flex">
         <div className="flex items-center gap-2.5 px-5 py-5">
           <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl">
-            <Image
-              src="/logo.png"
-              alt="โลโก้ร้าน"
-              width={40}
-              height={40}
-              className="h-full w-full object-cover"
-              priority
-            />
+            <ShopLogo size={40} priority />
           </div>
           <div>
-            <p className="font-bold leading-tight">POS</p>
+            <p className="font-bold leading-tight">{shop.label}</p>
             <p className="text-xs text-neutral-500">
               {profile ? ROLE_LABELS[profile.role] : "ระบบขายหน้าร้าน"}
             </p>
@@ -144,13 +140,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <nav className="flex-1 space-y-1 px-3">
           {visibleItems.map((item) => {
-            const active = pathname === item.href;
+            const href = shopHref(shop, item.href);
+            const active = pathname === href;
             const Icon = item.icon;
             const showAlert = item.href === "/" && alert;
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={href}
                 onClick={(e) => {
                   if (showAlert) {
                     e.preventDefault();
@@ -232,13 +229,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* Bottom nav สำหรับมือถือ — โชว์ทีละ 4 อันพอดีจอ ถ้าเกินเลื่อนซ้าย/ขวาเอา */}
         <nav className="no-scrollbar flex shrink-0 overflow-x-auto border-t border-neutral-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
           {visibleItems.map((item) => {
-            const active = pathname === item.href;
+            const href = shopHref(shop, item.href);
+            const active = pathname === href;
             const Icon = item.icon;
             const showAlert = item.href === "/" && alert;
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={href}
                 onClick={(e) => {
                   if (showAlert) {
                     e.preventDefault();

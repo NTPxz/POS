@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { requireOwner } from "@/lib/authorize-owner";
+import { shopFromPathname, staffPhoneEmail } from "@/lib/shops";
 import { Role } from "@/lib/types";
 
 const ALLOWED_ROLES: Role[] = ["owner", "manager", "staff"];
 
 export async function POST(request: Request) {
-  const auth = await requireOwner();
+  // route นี้ถูก re-export ไว้ใต้ /rompho/api ด้วย จึงดูร้านจาก path ที่ถูกเรียก
+  const shop = shopFromPathname(new URL(request.url).pathname);
+  const auth = await requireOwner(shop);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
@@ -36,7 +39,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "กรุณาเลือกสาขา" }, { status: 400 });
   }
 
-  const supabase = createClient();
+  const supabase = createClient(shop);
   const { data: branch } = await supabase
     .from("branches")
     .select("id")
@@ -57,14 +60,16 @@ export async function POST(request: Request) {
     );
   }
 
-  const email = emailInput || `phone-${phoneDigits}@staff.pos.local`;
+  const email = emailInput || staffPhoneEmail(shop, phoneDigits);
 
-  const admin = createAdminClient();
+  const admin = createAdminClient(shop);
   const { data: created, error: createError } =
     await admin.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
+      // handle_new_user() ใช้ค่านี้เลือกว่าจะสร้าง profile ใน schema ของร้านไหน
+      ...(shop.basePath ? { app_metadata: { shop: shop.slug } } : {}),
     });
   if (createError || !created.user) {
     return NextResponse.json(

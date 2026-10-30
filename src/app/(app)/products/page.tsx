@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { currentShop } from "@/lib/shops";
 import { baht, formatNumber } from "@/lib/format";
 import { compressImage } from "@/lib/image";
 import { Category, hasRole, Product, STOCK_GROUP_LABELS, StockGroup } from "@/lib/types";
@@ -360,7 +361,7 @@ function ProductModal({
     }
     const path = `${crypto.randomUUID()}.jpg`;
     const { error: uploadErr } = await supabase.storage
-      .from("product-images")
+      .from(currentShop().storageBucket)
       .upload(path, uploadBody, {
         cacheControl: "31536000",
         contentType: "image/jpeg",
@@ -371,7 +372,7 @@ function ProductModal({
       setUploading(false);
       return;
     }
-    const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+    const { data } = supabase.storage.from(currentShop().storageBucket).getPublicUrl(path);
     set({ image_url: data.publicUrl });
     setUploading(false);
   }
