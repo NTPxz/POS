@@ -8,6 +8,7 @@ import {
   Phone,
   Plus,
   RefreshCw,
+  Trash2,
   UserRound,
   Users,
   X,
@@ -144,6 +145,30 @@ function StaffPageContent() {
     if (p.id === me?.id) refreshMe();
   }
 
+  async function deleteStaff(p: Profile) {
+    const name = p.full_name || p.phone || p.email || "พนักงานคนนี้";
+    if (
+      !window.confirm(
+        `ลบบัญชี "${name}" ?\nคนนี้จะล็อกอินเข้าร้านนี้ไม่ได้อีก (ประวัติการขายเดิมจะยังอยู่ครบ)`
+      )
+    ) {
+      return;
+    }
+    setSavingId(p.id);
+    const res = await fetch(`${currentShop().basePath}/api/staff/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: p.id }),
+    });
+    const body = await res.json().catch(() => ({}));
+    setSavingId(null);
+    if (!res.ok) {
+      window.alert(`ลบบัญชีไม่สำเร็จ: ${body.error ?? "กรุณาลองอีกครั้ง"}`);
+      return;
+    }
+    await loadData();
+  }
+
   return (
     <div className="flex-1 p-4 md:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -251,6 +276,16 @@ function StaffPageContent() {
                         <KeyRound className="h-3.5 w-3.5" strokeWidth={2} />
                         เปลี่ยนรหัสผ่าน
                       </button>
+                      {p.id !== me?.id && (
+                        <button
+                          className="ml-1 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                          disabled={savingId === p.id}
+                          onClick={() => deleteStaff(p)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
+                          ลบบัญชี
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -303,6 +338,16 @@ function StaffPageContent() {
                     <KeyRound className="h-4 w-4" strokeWidth={2} />
                     เปลี่ยนรหัสผ่าน
                   </button>
+                  {p.id !== me?.id && (
+                    <button
+                      className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-red-200 py-2 text-sm font-medium text-red-600 disabled:opacity-50"
+                      disabled={savingId === p.id}
+                      onClick={() => deleteStaff(p)}
+                    >
+                      <Trash2 className="h-4 w-4" strokeWidth={2} />
+                      ลบบัญชี
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
