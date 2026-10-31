@@ -1,8 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { AlertCircle, ImageDown, Printer, RefreshCw, X } from "lucide-react";
+import { createPortal, flushSync } from "react-dom";
+import {
+  AlertCircle,
+  ChevronDown,
+  Eye,
+  ImageDown,
+  Printer,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import LoadingState from "@/components/LoadingState";
 import { useBranch } from "@/components/BranchProvider";
 import { buildReceipt, ReceiptData, ReceiptSale, renderReceiptImage } from "@/lib/receipt";
@@ -13,6 +21,7 @@ import { useShop } from "@/lib/useShop";
 const PAPER_KEY = "receipt_paper_mm";
 const PAPER_SIZES = [58, 80] as const;
 type PaperSize = (typeof PAPER_SIZES)[number];
+type PreviewMode = "none" | "bill" | "image";
 
 function readPaperSize(): PaperSize {
   try {
@@ -20,6 +29,11 @@ function readPaperSize(): PaperSize {
   } catch {
     return 80;
   }
+}
+
+/** แอปที่เปิดจากหน้าจอหลักของ iPhone/iPad: window.print() ไม่ทำอะไรเลยและไม่แจ้ง error */
+function isIosHomeScreenApp(): boolean {
+  return (navigator as Navigator & { standalone?: boolean }).standalone === true;
 }
 
 export default function ReceiptModal({
@@ -35,10 +49,14 @@ export default function ReceiptModal({
   const [sale, setSale] = useState<ReceiptSale | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [paper, setPaper] = useState<PaperSize>(readPaperSize);
   const [pageHeightMm, setPageHeightMm] = useState<number | null>(null);
-  const paperRef = useRef<HTMLDivElement>(null);
+  const [preview, setPreview] = useState<PreviewMode>("none");
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
+  const imageBlobRef = useRef<Blob | null>(null);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -77,6 +95,28 @@ export default function ReceiptModal({
     );
   }, [sale, branches, shop.receiptName]);
 
+  // สร้างรูปรอไว้ล่วงหน้า เพราะ iOS ยอมเปิดเมนูแชร์เฉพาะตอนที่เพิ่งกดปุ่มเท่านั้น
+  useEffect(() => {
+    if (!receipt) return;
+    let cancelled = false;
+    renderReceiptImage(receipt)
+      .then((blob) => {
+        if (!cancelled) imageBlobRef.current = blob;
+      })
+      .catch(() => {
+        // สร้างใหม่อีกครั้งตอนกดปุ่ม และแจ้ง error ตรงนั้น
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [receipt]);
+
+  useEffect(() => {
+    return () => {
+      if (imageUrl) URL.revokeObjectURL(imageUrl);
+    };
+  }, [imageUrl]);
+
   function choosePaper(size: PaperSize) {
     setPaper(size);
     try {
@@ -86,39 +126,41 @@ export default function ReceiptModal({
     }
   }
 
-  async function handlePrint() {
-    setActionError(null);
-    if (!paperRef.current) return;
-    await document.fonts.ready;
-    // บิลยาวไม่เท่ากัน จึงตั้งความสูงหน้ากระดาษตามเนื้อหาจริง ไม่งั้นได้กระดาษเปล่ายาวต่อท้าย
-    const heightMm = Math.ceil(
-      (paperRef.current.getBoundingClientRect().height * 25.4) / 96
-    );
-    setPageHeightMm(heightMm);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => window.print());
-    });
+  function showImage(blob: Blob, message: string) {
+    setImageUrl(URL.createObjectURL(blob));
+    setPreview("image");
+    setHint(message);
   }
 
-  async function handleSaveImage() {
+  async function deliverImage(forPrinting: boolean) {
     if (!receipt) return;
     setSaving(true);
     setActionError(null);
+    setHint(
+      forPrinting ? "กดคำสั่ง “พิมพ์” ในเมนูที่ขึ้นมา แล้วเลือกเครื่องพิมพ์" : null
+    );
     try {
-      const blob = await renderReceiptImage(receipt);
+      const blob = imageBlobRef.current ?? (await renderReceiptImage(receipt));
+      imageBlobRef.current = blob;
       const fileName = `bill-${receipt.billNo.replace("#", "")}.png`;
       const file = new File([blob], fileName, { type: "image/png" });
-
-      // บนมือถือเปิดเมนูแชร์เพื่อบันทึกลงเครื่องหรือส่งต่อ เช่น LINE ส่วนคอมดาวน์โหลดเลย
       const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
-      if (isTouchDevice && navigator.canShare?.({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file] });
-          return;
-        } catch (err) {
-          if (err instanceof DOMException && err.name === "AbortError") return;
+      const saveHint = "กดค้างที่รูปเพื่อบันทึกหรือส่งต่อ";
+
+      if (isTouchDevice) {
+        if (navigator.canShare?.({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file] });
+            return;
+          } catch (err) {
+            if (err instanceof DOMException && err.name === "AbortError") return;
+          }
         }
+        // เปิดเมนูแชร์ไม่ได้ ต้องมีผลให้เห็นเสมอ ไม่ปล่อยให้กดแล้วเงียบ
+        showImage(blob, saveHint);
+        return;
       }
+
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -133,6 +175,28 @@ export default function ReceiptModal({
     }
   }
 
+  function handlePrint() {
+    setActionError(null);
+    setHint(null);
+    if (isIosHomeScreenApp() || typeof window.print !== "function") {
+      void deliverImage(true);
+      return;
+    }
+    if (!measureRef.current) return;
+    // บิลยาวไม่เท่ากัน จึงตั้งความสูงหน้ากระดาษตามเนื้อหาจริง ไม่งั้นได้กระดาษเปล่ายาวต่อท้าย
+    const heightMm = Math.ceil(
+      (measureRef.current.getBoundingClientRect().height * 25.4) / 96
+    );
+    // ต้องเรียก print ทันทีในจังหวะที่กดปุ่ม ถ้ารอก่อน Safari จะไม่เปิดหน้าต่างพิมพ์
+    flushSync(() => setPageHeightMm(heightMm));
+    window.print();
+  }
+
+  function toggleBillPreview() {
+    setHint(null);
+    setPreview((current) => (current === "bill" ? "none" : "bill"));
+  }
+
   return (
     <div
       role="dialog"
@@ -142,7 +206,14 @@ export default function ReceiptModal({
     >
       <div className="flex max-h-[92dvh] w-full max-w-md flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl">
         <div className="flex items-center justify-between px-6 pt-5">
-          <h2 className="text-xl font-bold">พิมพ์บิล</h2>
+          <div className="min-w-0">
+            <h2 className="text-xl font-bold">พิมพ์บิล</h2>
+            {receipt && (
+              <p className="text-sm text-neutral-600">
+                บิล {receipt.billNo} · {receipt.total}
+              </p>
+            )}
+          </div>
           <button
             onClick={onClose}
             aria-label="ปิด"
@@ -165,16 +236,68 @@ export default function ReceiptModal({
           <LoadingState label="กำลังโหลดบิล..." />
         ) : (
           <>
-            <div className="min-h-0 flex-1 overflow-y-auto bg-neutral-100 px-4 py-4 my-3">
-              <div className="mx-auto w-fit max-w-full overflow-x-auto bg-white shadow-sm">
-                <div ref={paperRef}>
-                  <ReceiptPaper data={receipt} widthMm={paper} />
-                </div>
+            {preview !== "none" && (
+              <div className="mt-3 min-h-0 flex-1 overflow-y-auto bg-neutral-100 p-4">
+                {preview === "image" && imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={imageUrl}
+                    alt={`รูปบิล ${receipt.billNo}`}
+                    className="mx-auto w-full max-w-xs bg-white shadow-sm"
+                  />
+                ) : (
+                  <div className="mx-auto w-fit max-w-full overflow-x-auto bg-white shadow-sm">
+                    <ReceiptPaper data={receipt} widthMm={paper} />
+                  </div>
+                )}
               </div>
-            </div>
+            )}
 
-            <div className="space-y-3 px-6 pb-5">
-              <div className="flex items-center justify-between gap-3">
+            <div className="space-y-2 px-6 pb-5 pt-4">
+              {hint && (
+                <p role="status" className="rounded-xl bg-neutral-100 px-4 py-3 text-sm text-neutral-700">
+                  {hint}
+                </p>
+              )}
+              {actionError && (
+                <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+                  {actionError}
+                </p>
+              )}
+
+              <button
+                type="button"
+                className="btn-primary inline-flex w-full items-center justify-center gap-2 py-3"
+                onClick={handlePrint}
+              >
+                <Printer className="h-4 w-4" strokeWidth={2} />
+                พิมพ์เครื่องพิมพ์
+              </button>
+              <button
+                type="button"
+                className="btn-secondary inline-flex w-full items-center justify-center gap-2 py-3"
+                onClick={toggleBillPreview}
+                aria-expanded={preview === "bill"}
+              >
+                <Eye className="h-4 w-4" strokeWidth={2} />
+                ดูบิล
+                <ChevronDown
+                  className={`h-4 w-4 transition ${preview === "bill" ? "rotate-180" : ""}`}
+                  strokeWidth={2}
+                />
+              </button>
+              <button
+                type="button"
+                className="btn-secondary inline-flex w-full items-center justify-center gap-2 py-3 disabled:opacity-40"
+                onClick={() => deliverImage(false)}
+                disabled={saving}
+                aria-busy={saving}
+              >
+                {!saving && <ImageDown className="h-4 w-4" strokeWidth={2} />}
+                {saving ? "กำลังสร้างรูป..." : "ออกบิลเป็นรูป"}
+              </button>
+
+              <div className="flex items-center justify-between gap-3 pt-2">
                 <span id="paper-label" className="text-sm font-medium text-neutral-700">
                   ขนาดกระดาษ
                 </span>
@@ -196,33 +319,15 @@ export default function ReceiptModal({
                   ))}
                 </div>
               </div>
+            </div>
 
-              {actionError && (
-                <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
-                  {actionError}
-                </p>
-              )}
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="btn-secondary inline-flex flex-1 items-center justify-center gap-2 disabled:opacity-40"
-                  onClick={handleSaveImage}
-                  disabled={saving}
-                  aria-busy={saving}
-                >
-                  {!saving && <ImageDown className="h-4 w-4" strokeWidth={2} />}
-                  {saving ? "กำลังสร้างรูป..." : "บันทึกเป็นรูป"}
-                </button>
-                <button
-                  type="button"
-                  className="btn-primary inline-flex flex-1 items-center justify-center gap-2"
-                  onClick={handlePrint}
-                >
-                  <Printer className="h-4 w-4" strokeWidth={2} />
-                  พิมพ์บิล
-                </button>
-              </div>
+            {/* ไว้วัดความสูงบิลตอนสั่งพิมพ์ แม้ผู้ใช้ไม่ได้เปิดดูบิล */}
+            <div
+              ref={measureRef}
+              aria-hidden="true"
+              className="pointer-events-none invisible fixed left-0 top-0"
+            >
+              <ReceiptPaper data={receipt} widthMm={paper} />
             </div>
 
             {createPortal(
