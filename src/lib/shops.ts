@@ -48,7 +48,7 @@ export const ROMPHO_SHOP: Shop = {
   basePath: "/rompho",
   label: "ร่มโพธิ์",
   receiptName: "ร่มโพธิ์",
-  receiptLogo: "/rompho-logo.png",
+  receiptLogo: "/rompho-receipt-logo.png",
   receiptFooter: [
     "มูลีกู้กับเหล้า",
     "ข้าวกู้กับปล๋า",

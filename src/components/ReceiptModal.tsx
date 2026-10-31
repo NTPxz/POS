@@ -375,7 +375,7 @@ function ReceiptPaper({ data, widthMm }: { data: ReceiptData; widthMm: number })
       style={{ width: `${widthMm}mm`, maxWidth: "100%", boxSizing: "border-box" }}
     >
       <div className="text-center">
-        <p className="text-lg font-bold leading-tight">{data.shopName}</p>
+        {!data.logo && <p className="text-lg font-bold leading-tight">{data.shopName}</p>}
         {data.branchName && <p>{data.branchName}</p>}
         {data.voided && <p className="mt-1 text-base font-bold">ยกเลิกแล้ว</p>}
         {data.logo ? (
@@ -384,8 +384,10 @@ function ReceiptPaper({ data, widthMm }: { data: ReceiptData; widthMm: number })
           <img
             src={data.logo}
             alt={`โลโก้ ${data.shopName}`}
+            width={800}
+            height={487}
             className="mx-auto mt-1 block"
-            style={{ width: "28mm", height: "28mm" }}
+            style={{ width: "42mm", height: "auto" }}
           />
         ) : (
           <p className="mt-1 font-semibold">บิล {data.billNo}</p>

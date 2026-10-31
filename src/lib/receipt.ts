@@ -148,14 +148,16 @@ function drawReceipt(
     y += 14;
   };
 
-  center(data.shopName, 38, 700);
+  // โลโก้มีชื่อร้านอยู่แล้ว ไม่ต้องพิมพ์ชื่อซ้ำ
+  if (!logo) center(data.shopName, 38, 700);
   if (data.branchName) center(data.branchName, 24);
   y += 6;
   if (data.voided) center("ยกเลิกแล้ว", 32, 700);
   if (logo) {
-    const size = 200;
-    ctx.drawImage(logo, (IMAGE_WIDTH - size) / 2, y, size, size);
-    y += size + 10;
+    const logoWidth = 380;
+    const logoHeight = (logo.naturalHeight / logo.naturalWidth) * logoWidth;
+    ctx.drawImage(logo, (IMAGE_WIDTH - logoWidth) / 2, y, logoWidth, logoHeight);
+    y += logoHeight + 10;
   } else {
     center(`บิล ${data.billNo}`, 24, 600);
   }
