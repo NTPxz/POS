@@ -13,6 +13,10 @@ export type Shop = {
   label: string;
   /** ชื่อร้านที่พิมพ์บนบิล */
   receiptName: string;
+  /** โลโก้บนบิล แสดงแทนเลขที่บิล null = แสดงเลขที่บิลตามปกติ */
+  receiptLogo: string | null;
+  /** ข้อความท้ายบิล แยกบรรทัด */
+  receiptFooter: string[];
   /** null = ยังไม่มีโลโก้ ให้โชว์ตัวอักษรย่อแทน */
   logo: string | null;
   logoInitial: string;
@@ -29,6 +33,8 @@ export const DEFAULT_SHOP: Shop = {
   basePath: "",
   label: "POS",
   receiptName: "หม่าล่า เป่ง",
+  receiptLogo: null,
+  receiptFooter: ["ขอบคุณที่ใช้บริการ"],
   logo: "/logo.png",
   logoInitial: "ห",
   storagePrefix: "",
@@ -42,6 +48,14 @@ export const ROMPHO_SHOP: Shop = {
   basePath: "/rompho",
   label: "ร่มโพธิ์",
   receiptName: "ร่มโพธิ์",
+  receiptLogo: "/rompho-logo.png",
+  receiptFooter: [
+    "มูลีกู้กับเหล้า",
+    "ข้าวกู้กับปล๋า",
+    "น้ำแข็งกู้กับโซดา",
+    "ส่วนตั๋วข้าเมากู้แลง",
+    "ขอบคุณเจ้าา",
+  ],
   logo: "/rompho-logo.png",
   logoInitial: "ร",
   storagePrefix: "rompho:",

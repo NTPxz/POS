@@ -125,10 +125,10 @@ export function ReceiptActions({
     const branchName = branches.find((b) => b.id === sale.branch_id)?.name ?? null;
     return buildReceipt(
       sale,
-      shop.receiptName,
+      shop,
       branches.length > 1 ? branchName : null
     );
-  }, [sale, branches, shop.receiptName]);
+  }, [sale, branches, shop]);
 
   // สร้างรูปรอไว้ล่วงหน้า เพราะ iOS ยอมเปิดเมนูแชร์เฉพาะตอนที่เพิ่งกดปุ่มเท่านั้น
   useEffect(() => {
@@ -378,7 +378,18 @@ function ReceiptPaper({ data, widthMm }: { data: ReceiptData; widthMm: number })
         <p className="text-lg font-bold leading-tight">{data.shopName}</p>
         {data.branchName && <p>{data.branchName}</p>}
         {data.voided && <p className="mt-1 text-base font-bold">ยกเลิกแล้ว</p>}
-        <p className="mt-1 font-semibold">บิล {data.billNo}</p>
+        {data.logo ? (
+          // ใช้ img ตรงๆ เพื่อให้รูปโหลดครบก่อนพิมพ์ ไม่ถูก lazy load
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={data.logo}
+            alt={`โลโก้ ${data.shopName}`}
+            className="mx-auto mt-1 block"
+            style={{ width: "28mm", height: "28mm" }}
+          />
+        ) : (
+          <p className="mt-1 font-semibold">บิล {data.billNo}</p>
+        )}
         <p>{data.dateTime}</p>
         {data.tableName && <p>{data.tableName}</p>}
         {data.customerName && <p>ลูกค้า: {data.customerName}</p>}
@@ -415,7 +426,11 @@ function ReceiptPaper({ data, widthMm }: { data: ReceiptData; widthMm: number })
       </div>
 
       <div className="my-2 border-t border-black" />
-      <p className="text-center">ขอบคุณที่ใช้บริการ</p>
+      <div className="text-center">
+        {data.footer.map((line) => (
+          <p key={line}>{line}</p>
+        ))}
+      </div>
     </div>
   );
 }

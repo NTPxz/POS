@@ -1,4 +1,5 @@
 import { baht, billNumber, formatDateTime, formatNumber } from "@/lib/format";
+import type { Shop } from "@/lib/shops";
 import { PAYMENT_LABELS, SaleWithItems } from "@/lib/types";
 
 export type ReceiptSale = SaleWithItems & {
@@ -15,6 +16,8 @@ export type ReceiptLine = {
 export type ReceiptData = {
   shopName: string;
   branchName: string | null;
+  logo: string | null;
+  footer: string[];
   billNo: string;
   dateTime: string;
   tableName: string | null;
@@ -32,15 +35,17 @@ export type ReceiptData = {
 
 export function buildReceipt(
   sale: ReceiptSale,
-  shopName: string,
+  shop: Shop,
   branchName: string | null
 ): ReceiptData {
   const items = [...sale.sale_items].sort((a, b) =>
     a.created_at.localeCompare(b.created_at)
   );
   return {
-    shopName,
+    shopName: shop.receiptName,
     branchName,
+    logo: shop.receiptLogo,
+    footer: shop.receiptFooter,
     billNo: billNumber(sale.sale_number),
     dateTime: formatDateTime(sale.created_at),
     tableName: sale.dining_tables?.name ?? null,
@@ -103,7 +108,11 @@ function wrapText(
 }
 
 /** วาดบิลทั้งใบ คืนค่าความสูงที่ใช้ เรียกสองรอบ: รอบแรกวัดความสูง รอบสองวาดจริง */
-function drawReceipt(ctx: CanvasRenderingContext2D, data: ReceiptData): number {
+function drawReceipt(
+  ctx: CanvasRenderingContext2D,
+  data: ReceiptData,
+  logo: HTMLImageElement | null
+): number {
   const contentWidth = IMAGE_WIDTH - PADDING * 2;
   const right = IMAGE_WIDTH - PADDING;
   let y = PADDING;
@@ -143,7 +152,13 @@ function drawReceipt(ctx: CanvasRenderingContext2D, data: ReceiptData): number {
   if (data.branchName) center(data.branchName, 24);
   y += 6;
   if (data.voided) center("ยกเลิกแล้ว", 32, 700);
-  center(`บิล ${data.billNo}`, 24, 600);
+  if (logo) {
+    const size = 200;
+    ctx.drawImage(logo, (IMAGE_WIDTH - size) / 2, y, size, size);
+    y += size + 10;
+  } else {
+    center(`บิล ${data.billNo}`, 24, 600);
+  }
   center(data.dateTime, 22);
   if (data.tableName) center(data.tableName, 24);
   if (data.customerName) center(`ลูกค้า: ${data.customerName}`, 24);
@@ -180,9 +195,18 @@ function drawReceipt(ctx: CanvasRenderingContext2D, data: ReceiptData): number {
     }
   }
   divider();
-  center("ขอบคุณที่ใช้บริการ", 24);
+  data.footer.forEach((line) => center(line, 24));
 
   return Math.ceil(y + PADDING);
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("โหลดโลโก้บนบิลไม่สำเร็จ"));
+    image.src = src;
+  });
 }
 
 export async function renderReceiptImage(data: ReceiptData): Promise<Blob> {
@@ -193,17 +217,19 @@ export async function renderReceiptImage(data: ReceiptData): Promise<Blob> {
     )
   );
 
+  const logo = data.logo ? await loadImage(data.logo) : null;
+
   const canvas = document.createElement("canvas");
   canvas.width = IMAGE_WIDTH;
   canvas.height = 1;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("เบราว์เซอร์นี้สร้างรูปไม่ได้");
 
-  const height = drawReceipt(ctx, data);
+  const height = drawReceipt(ctx, data, logo);
   canvas.height = height; // การตั้งขนาดจะล้าง canvas และ state ทั้งหมด
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, IMAGE_WIDTH, height);
-  drawReceipt(ctx, data);
+  drawReceipt(ctx, data, logo);
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(
