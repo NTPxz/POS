@@ -37,6 +37,7 @@ export type Product = {
   image_url: string | null;
   is_active: boolean;
   is_sold_out: boolean;
+  show_on_qr: boolean;
   created_at: string;
   updated_at: string;
   updated_by: string | null;

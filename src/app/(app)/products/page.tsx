@@ -4,9 +4,11 @@ import LoadingState from "@/components/LoadingState";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  EyeOff,
   ImageOff,
   Package,
   Plus,
+  QrCode,
   RefreshCw,
   Tag,
   Trash2,
@@ -33,6 +35,7 @@ type ProductForm = {
   low_stock_threshold: string;
   stock_group: StockGroup | "";
   image_url: string;
+  show_on_qr: boolean;
 };
 
 const EMPTY_FORM: ProductForm = {
@@ -46,6 +49,7 @@ const EMPTY_FORM: ProductForm = {
   low_stock_threshold: "5",
   stock_group: "",
   image_url: "",
+  show_on_qr: true,
 };
 
 export default function ProductsPage() {
@@ -70,6 +74,7 @@ function ProductsPageContent() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [catModalOpen, setCatModalOpen] = useState(false);
   const [savingSoldOutId, setSavingSoldOutId] = useState<string | null>(null);
+  const [savingQrId, setSavingQrId] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "stock">("list");
 
   const loadData = useCallback(async () => {
@@ -138,6 +143,22 @@ function ProductsPageContent() {
       return;
     await supabase.from("products").update({ is_active: false }).eq("id", p.id);
     loadData();
+  }
+
+  async function toggleShowOnQr(p: Product, show: boolean) {
+    setSavingQrId(p.id);
+    setProducts((prev) =>
+      prev.map((item) => (item.id === p.id ? { ...item, show_on_qr: show } : item))
+    );
+    const { error } = await supabase
+      .from("products")
+      .update({ show_on_qr: show, updated_at: new Date().toISOString() })
+      .eq("id", p.id);
+    setSavingQrId(null);
+    if (error) {
+      window.alert(`บันทึกไม่สำเร็จ: ${error.message}`);
+      loadData();
+    }
   }
 
   async function toggleSoldOut(p: Product, soldOut: boolean) {
@@ -250,6 +271,8 @@ function ProductsPageContent() {
               onEdit={() => openEdit(p)}
               onDelete={() => handleDelete(p)}
               onToggleSoldOut={(soldOut) => toggleSoldOut(p, soldOut)}
+              savingQr={savingQrId === p.id}
+              onToggleQr={(show) => toggleShowOnQr(p, show)}
             />
           ))}
         </div>
@@ -310,6 +333,7 @@ function ProductModal({
           low_stock_threshold: String(product.low_stock_threshold),
           stock_group: product.stock_group ?? "",
           image_url: product.image_url ?? "",
+          show_on_qr: product.show_on_qr,
         }
       : EMPTY_FORM
   );
@@ -413,12 +437,24 @@ function ProductModal({
           low_stock_threshold: parseFloat(form.low_stock_threshold) || 0,
           stock_group: form.stock_group || null,
           image_url: form.image_url.trim() || null,
+          show_on_qr: form.show_on_qr,
           branch_id: activeBranchId,
         });
     if (error) {
       setError(`บันทึกไม่สำเร็จ: ${error.message}`);
       setSaving(false);
       return;
+    }
+    if (product && form.show_on_qr !== product.show_on_qr) {
+      const { error: visibilityError } = await supabase
+        .from("products")
+        .update({ show_on_qr: form.show_on_qr })
+        .eq("id", product.id);
+      if (visibilityError) {
+        setError(`บันทึกการโชว์ในเมนู QR ไม่สำเร็จ: ${visibilityError.message}`);
+        setSaving(false);
+        return;
+      }
     }
     onSaved();
   }
@@ -518,6 +554,18 @@ function ProductModal({
 
           {isOwner ? (
             <>
+              <label className="flex items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3">
+                <input
+                  type="checkbox"
+                  className="h-5 w-5 accent-brand-600"
+                  checked={form.show_on_qr}
+                  onChange={(e) => set({ show_on_qr: e.target.checked })}
+                />
+                <span className="text-sm font-medium">
+                  โชว์ในเมนูที่ลูกค้าสแกน QR สั่ง
+                </span>
+              </label>
+
               <label className="flex items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3">
                 <input
                   type="checkbox"
@@ -651,6 +699,8 @@ function ProductListRow({
   onEdit,
   onDelete,
   onToggleSoldOut,
+  savingQr,
+  onToggleQr,
 }: {
   product: Product;
   isOwner: boolean;
@@ -659,6 +709,8 @@ function ProductListRow({
   onEdit: () => void;
   onDelete: () => void;
   onToggleSoldOut: (soldOut: boolean) => void;
+  savingQr: boolean;
+  onToggleQr: (show: boolean) => void;
 }) {
   const low = p.track_stock && p.stock <= p.low_stock_threshold;
 
@@ -711,10 +763,36 @@ function ProductListRow({
               {p.stock <= 0 ? "หมด" : `เหลือ ${formatNumber(p.stock)}`}
             </span>
           )}
+          {!p.show_on_qr && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+              ซ่อนจาก QR
+            </span>
+          )}
         </div>
       </button>
 
       <div className="flex shrink-0 items-center gap-1.5">
+        {isOwner && (
+          <button
+            type="button"
+            onClick={() => onToggleQr(!p.show_on_qr)}
+            disabled={savingQr}
+            aria-pressed={p.show_on_qr}
+            aria-label={`โชว์ ${p.name} ในเมนู QR`}
+            title={p.show_on_qr ? "โชว์ในเมนู QR อยู่ กดเพื่อซ่อน" : "ซ่อนจากเมนู QR อยู่ กดเพื่อโชว์"}
+            className={`rounded-lg p-2 transition active:scale-95 disabled:opacity-50 ${
+              p.show_on_qr
+                ? "text-neutral-500 hover:bg-neutral-100"
+                : "bg-amber-50 text-amber-700 hover:bg-amber-100"
+            }`}
+          >
+            {p.show_on_qr ? (
+              <QrCode className="h-4 w-4" strokeWidth={2} />
+            ) : (
+              <EyeOff className="h-4 w-4" strokeWidth={2} />
+            )}
+          </button>
+        )}
         <label
           className={`flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-semibold transition active:scale-95 ${
             savingSoldOut ? "opacity-50" : ""
