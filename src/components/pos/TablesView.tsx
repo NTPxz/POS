@@ -16,7 +16,9 @@ import {
   Trash2,
   Users,
   X,
+  Printer,
 } from "lucide-react";
+import ReceiptModal from "@/components/ReceiptModal";
 import { createClient } from "@/lib/supabase/client";
 import { currentShop } from "@/lib/shops";
 import { baht, formatDateTime, formatNumber } from "@/lib/format";
@@ -972,6 +974,7 @@ function TableCheckoutModal({
   const [done, setDone] = useState<{ total: number; change: number | null } | null>(
     null
   );
+  const [receiptOpen, setReceiptOpen] = useState(false);
 
   const subtotal = Number(sale.subtotal);
   const discount = Math.max(parseFloat(discountStr) || 0, 0);
@@ -1020,10 +1023,20 @@ function TableCheckoutModal({
               </p>
             </div>
           )}
-          <button className="btn-primary mt-6 w-full py-3" onClick={onDone}>
+          <button
+            className="btn-secondary mt-6 inline-flex w-full items-center justify-center gap-2 py-3"
+            onClick={() => setReceiptOpen(true)}
+          >
+            <Printer className="h-4 w-4" strokeWidth={2} />
+            พิมพ์บิล
+          </button>
+          <button className="btn-primary mt-2 w-full py-3" onClick={onDone}>
             เสร็จสิ้น
           </button>
         </div>
+        {receiptOpen && (
+          <ReceiptModal saleId={sale.id} onClose={() => setReceiptOpen(false)} />
+        )}
       </div>
     );
   }

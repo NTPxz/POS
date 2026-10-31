@@ -11,6 +11,8 @@ export type Shop = {
   basePath: string;
   /** ชื่อที่โชว์บนแถบเมนู */
   label: string;
+  /** ชื่อร้านที่พิมพ์บนบิล */
+  receiptName: string;
   /** null = ยังไม่มีโลโก้ ให้โชว์ตัวอักษรย่อแทน */
   logo: string | null;
   logoInitial: string;
@@ -26,6 +28,7 @@ export const DEFAULT_SHOP: Shop = {
   slug: "mala-peng",
   basePath: "",
   label: "POS",
+  receiptName: "หม่าล่า เป่ง",
   logo: "/logo.png",
   logoInitial: "ห",
   storagePrefix: "",
@@ -38,6 +41,7 @@ export const ROMPHO_SHOP: Shop = {
   slug: "rompho",
   basePath: "/rompho",
   label: "ร่มโพธิ์",
+  receiptName: "ร่มโพธิ์",
   logo: null,
   logoInitial: "ร",
   storagePrefix: "rompho:",

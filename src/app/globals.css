@@ -113,3 +113,22 @@ button {
     transform: scaleX(0.9);
   }
 }
+
+/* พิมพ์บิล: ซ่อนทั้งแอป เหลือเฉพาะบิลที่ ReceiptModal วางไว้ใต้ body */
+.receipt-print-root {
+  display: none;
+}
+@media print {
+  html,
+  body {
+    height: auto;
+    overflow: visible;
+    background: #ffffff;
+  }
+  body > :not(.receipt-print-root) {
+    display: none !important;
+  }
+  .receipt-print-root {
+    display: block;
+  }
+}

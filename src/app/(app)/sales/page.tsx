@@ -2,7 +2,8 @@
 
 import LoadingState from "@/components/LoadingState";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, Pencil, Receipt, RefreshCw } from "lucide-react";
+import { AlertCircle, Pencil, Printer, Receipt, RefreshCw } from "lucide-react";
+import ReceiptModal from "@/components/ReceiptModal";
 import { createClient } from "@/lib/supabase/client";
 import {
   baht,
@@ -39,6 +40,7 @@ function SalesPageContent() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
+  const [receiptSaleId, setReceiptSaleId] = useState<string | null>(null);
 
   const loadSales = useCallback(async () => {
     if (!activeBranchId) return;
@@ -291,6 +293,13 @@ function SalesPageContent() {
                         </p>
                       )}
                     </div>
+                    <button
+                      className="btn-secondary mt-3 inline-flex w-full items-center justify-center gap-2"
+                      onClick={() => setReceiptSaleId(sale.id)}
+                    >
+                      <Printer className="h-4 w-4" strokeWidth={2} />
+                      พิมพ์บิล
+                    </button>
                     {!voided && (
                       <button
                         className="mt-3 w-full rounded-xl border border-red-200 py-2.5 text-sm font-medium text-red-500 hover:bg-red-50"
@@ -305,6 +314,10 @@ function SalesPageContent() {
             );
           })}
         </ul>
+      )}
+
+      {receiptSaleId && (
+        <ReceiptModal saleId={receiptSaleId} onClose={() => setReceiptSaleId(null)} />
       )}
     </div>
   );
