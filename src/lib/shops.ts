@@ -42,7 +42,7 @@ export const ROMPHO_SHOP: Shop = {
   basePath: "/rompho",
   label: "ร่มโพธิ์",
   receiptName: "ร่มโพธิ์",
-  logo: null,
+  logo: "/rompho-logo.png",
   logoInitial: "ร",
   storagePrefix: "rompho:",
   dbSchema: "rompho",
