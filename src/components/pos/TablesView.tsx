@@ -1,7 +1,7 @@
 "use client";
 
 import LoadingState from "@/components/LoadingState";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -322,6 +322,10 @@ function TableOrderSession({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  // พอเก็บเงินสำเร็จ realtime จะโหลดรายการบิล open ใหม่แล้ว sale กลายเป็น null ทันที
+  // ต้องจำบิลล่าสุดไว้ ไม่งั้นหน้าสำเร็จถูกปิดไปก่อนได้กดพิมพ์บิล
+  const lastSaleRef = useRef(sale);
+  if (sale) lastSaleRef.current = sale;
   const [panelOpen, setPanelOpen] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
@@ -622,10 +626,10 @@ function TableOrderSession({
         </div>
       )}
 
-      {checkoutOpen && sale && (
+      {checkoutOpen && lastSaleRef.current && (
         <TableCheckoutModal
           table={table}
-          sale={sale}
+          sale={lastSaleRef.current}
           onClose={() => setCheckoutOpen(false)}
           onDone={() => {
             setCheckoutOpen(false);
