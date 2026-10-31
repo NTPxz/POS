@@ -1,5 +1,6 @@
 "use client";
 
+import LoadingState from "@/components/LoadingState";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -190,7 +191,7 @@ export default function TablesView({
       </div>
 
       {loading ? (
-        <p className="py-16 text-center text-neutral-400">กำลังโหลด...</p>
+        <LoadingState />
       ) : loadError ? (
         <div className="py-16 text-center text-red-500">
           <AlertCircle className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
@@ -522,7 +523,7 @@ function TableOrderSession({
               <button
                 className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-amber-700 shadow-sm hover:bg-amber-100 disabled:opacity-60"
                 onClick={cancelBillRequest}
-                disabled={cancelingBill}
+                disabled={cancelingBill} aria-busy={cancelingBill}
               >
                 {cancelingBill ? "กำลังยกเลิก..." : "ยกเลิก (ลูกค้ากดผิด)"}
               </button>
@@ -581,7 +582,7 @@ function TableOrderSession({
       )}
 
       {panelOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 lg:hidden">
+        <div className="modal-overlay fixed inset-0 z-50 flex flex-col justify-end bg-black/40 lg:hidden">
           <div className="absolute inset-0" onClick={() => setPanelOpen(false)} />
           <div className="relative flex max-h-[85dvh] flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)]">
             <div className="flex items-center justify-between px-5 pt-4">
@@ -731,7 +732,7 @@ function OrderPanel({
                         ) : (
                           <>
                             <button
-                              disabled={busy}
+                              disabled={busy} aria-busy={busy}
                               onClick={() => onEditItem(item.id, qty - 1)}
                               className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-100 text-sm font-bold text-neutral-600 active:scale-95 disabled:opacity-40"
                             >
@@ -741,14 +742,14 @@ function OrderPanel({
                               {formatNumber(qty)}
                             </span>
                             <button
-                              disabled={busy}
+                              disabled={busy} aria-busy={busy}
                               onClick={() => onEditItem(item.id, qty + 1)}
                               className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-100 text-sm font-bold text-neutral-600 active:scale-95 disabled:opacity-40"
                             >
                               +
                             </button>
                             <button
-                              disabled={busy}
+                              disabled={busy} aria-busy={busy}
                               onClick={() => onEditItem(item.id, 0)}
                               className="ml-1 p-1 text-neutral-300 hover:text-red-500 disabled:opacity-40"
                               aria-label="ลบรายการ"
@@ -770,7 +771,7 @@ function OrderPanel({
                         <div className="mt-1.5 flex gap-2">
                           {isOwner && (
                             <button
-                              disabled={requestBusy}
+                              disabled={requestBusy} aria-busy={requestBusy}
                               onClick={() => onResolveRequest(item.pending_edit_request_id!, true)}
                               className="rounded-lg bg-purple-600 px-2.5 py-1 font-semibold text-white active:scale-95 disabled:opacity-40"
                             >
@@ -778,7 +779,7 @@ function OrderPanel({
                             </button>
                           )}
                           <button
-                            disabled={requestBusy}
+                            disabled={requestBusy} aria-busy={requestBusy}
                             onClick={() => onResolveRequest(item.pending_edit_request_id!, false)}
                             className="rounded-lg border border-purple-300 px-2.5 py-1 font-semibold text-purple-700 active:scale-95 disabled:opacity-40"
                           >
@@ -806,7 +807,7 @@ function OrderPanel({
                       </span>
                       {item.status !== "served" && (
                         <button
-                          disabled={statusBusy}
+                          disabled={statusBusy} aria-busy={statusBusy}
                           onClick={() =>
                             onAdvanceStatus(
                               item.id,
@@ -898,7 +899,7 @@ function OrderPanel({
         {round.length > 0 && (
           <button
             className="btn-secondary w-full py-3"
-            disabled={submitting}
+            disabled={submitting} aria-busy={submitting}
             onClick={onSubmitRound}
           >
             {submitting ? "กำลังส่ง..." : `ส่งออเดอร์ (+${baht(roundTotal)})`}
@@ -1002,7 +1003,7 @@ function TableCheckoutModal({
 
   if (done) {
     return (
-      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+      <div className="modal-overlay fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
         <div className="w-full max-w-sm rounded-3xl bg-white p-8 text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-green-600">
             <CheckCircle2 className="h-9 w-9" strokeWidth={2} />
@@ -1028,7 +1029,7 @@ function TableCheckoutModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+    <div className="modal-overlay fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
       <div className="flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl">
         <div className="flex items-center justify-between px-6 pt-5">
           <h2 className="text-xl font-bold">เก็บเงิน — {table.name}</h2>
@@ -1109,7 +1110,7 @@ function TableCheckoutModal({
         <div className="border-t border-neutral-200 p-4 px-6">
           <button
             className="btn-primary w-full py-3.5 text-lg"
-            disabled={saving || cashInsufficient}
+            disabled={saving || cashInsufficient} aria-busy={saving}
             onClick={confirm}
           >
             {saving ? "กำลังบันทึก..." : `ยืนยันเก็บเงิน ${baht(total)}`}
@@ -1166,7 +1167,7 @@ function TableManageModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
       <div className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl">
         <div className="flex items-center justify-between px-6 pt-5">
           <h2 className="text-xl font-bold">จัดการโต๊ะ</h2>
@@ -1190,7 +1191,7 @@ function TableManageModal({
             <button
               type="submit"
               className="btn-primary"
-              disabled={saving || !name.trim()}
+              disabled={saving || !name.trim()} aria-busy={saving}
             >
               เพิ่ม
             </button>
@@ -1269,7 +1270,7 @@ function TableQrModal({
   }, [table.id]);
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+    <div className="modal-overlay fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
       <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-lg font-bold">QR สั่งอาหาร · {table.name}</h3>

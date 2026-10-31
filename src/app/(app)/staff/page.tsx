@@ -1,5 +1,6 @@
 "use client";
 
+import LoadingState from "@/components/LoadingState";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -192,7 +193,7 @@ function StaffPageContent() {
       </div>
 
       {loading ? (
-        <p className="py-16 text-center text-neutral-400">กำลังโหลด...</p>
+        <LoadingState />
       ) : loadError ? (
         <div className="py-16 text-center text-red-500">
           <AlertCircle className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
@@ -279,7 +280,7 @@ function StaffPageContent() {
                       {p.id !== me?.id && (
                         <button
                           className="ml-1 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50"
-                          disabled={savingId === p.id}
+                          disabled={savingId === p.id} aria-busy={savingId === p.id}
                           onClick={() => deleteStaff(p)}
                         >
                           <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
@@ -341,7 +342,7 @@ function StaffPageContent() {
                   {p.id !== me?.id && (
                     <button
                       className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-red-200 py-2 text-sm font-medium text-red-600 disabled:opacity-50"
-                      disabled={savingId === p.id}
+                      disabled={savingId === p.id} aria-busy={savingId === p.id}
                       onClick={() => deleteStaff(p)}
                     >
                       <Trash2 className="h-4 w-4" strokeWidth={2} />
@@ -547,7 +548,7 @@ function AddStaffModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
       <form
         onSubmit={save}
         className="flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl"
@@ -652,7 +653,7 @@ function AddStaffModal({
           <button type="button" className="btn-secondary flex-1" onClick={onClose}>
             ยกเลิก
           </button>
-          <button type="submit" className="btn-primary flex-1" disabled={saving}>
+          <button type="submit" className="btn-primary flex-1" disabled={saving} aria-busy={saving}>
             {saving ? "กำลังสร้าง..." : "สร้างพนักงาน"}
           </button>
         </div>
@@ -693,7 +694,7 @@ function ResetPasswordModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
       <div className="flex max-h-[92dvh] w-full max-w-sm flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl">
         <div className="flex items-center justify-between px-6 pt-5">
           <h2 className="text-xl font-bold">เปลี่ยนรหัสผ่าน</h2>
@@ -746,7 +747,7 @@ function ResetPasswordModal({
               >
                 ยกเลิก
               </button>
-              <button type="submit" className="btn-primary flex-1" disabled={saving}>
+              <button type="submit" className="btn-primary flex-1" disabled={saving} aria-busy={saving}>
                 {saving ? "กำลังบันทึก..." : "บันทึก"}
               </button>
             </div>

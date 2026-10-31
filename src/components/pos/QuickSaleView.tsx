@@ -1,5 +1,6 @@
 "use client";
 
+import LoadingState from "@/components/LoadingState";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -280,7 +281,7 @@ export default function QuickSaleView({
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-neutral-400">กำลังโหลดคิว...</p>
+        <LoadingState label="กำลังโหลดคิว..." />
       </div>
     );
   }
@@ -342,7 +343,7 @@ export default function QuickSaleView({
       )}
 
       {cartOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 lg:hidden">
+        <div className="modal-overlay fixed inset-0 z-50 flex flex-col justify-end bg-black/40 lg:hidden">
           <div className="absolute inset-0" onClick={() => setCartOpen(false)} />
           <div className="relative flex max-h-[85dvh] flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)]">
             <div className="flex items-center justify-between px-5 pt-4">
@@ -669,7 +670,7 @@ function CheckoutModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+    <div className="modal-overlay fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
       <div className="flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl">
         <div className="flex items-center justify-between px-6 pt-5">
           <h2 className="text-xl font-bold">คิดเงิน</h2>
@@ -750,7 +751,7 @@ function CheckoutModal({
         <div className="border-t border-neutral-200 p-4 px-6">
           <button
             className="btn-primary w-full py-3.5 text-lg"
-            disabled={saving || cashInsufficient}
+            disabled={saving || cashInsufficient} aria-busy={saving}
             onClick={confirm}
           >
             {saving ? "กำลังบันทึก..." : `ยืนยันการขาย ${baht(total)}`}
@@ -769,7 +770,7 @@ function SuccessModal({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+    <div className="modal-overlay fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-sm rounded-3xl bg-white p-8 text-center">
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-green-600">
           <CheckCircle2 className="h-9 w-9" strokeWidth={2} />

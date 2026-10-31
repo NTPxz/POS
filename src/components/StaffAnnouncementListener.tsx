@@ -71,7 +71,7 @@ export default function StaffAnnouncementListener() {
   if (!profile || !current) return null;
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4">
+    <div className="modal-overlay fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4">
       <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl">
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-brand-50">
           <Megaphone className="h-7 w-7 text-brand-600" strokeWidth={2} />

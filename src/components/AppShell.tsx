@@ -1,5 +1,6 @@
 "use client";
 
+import NavProgress from "@/components/NavProgress";
 import ShopLogo from "@/components/ShopLogo";
 import { useShop } from "@/lib/useShop";
 import { shopHref } from "@/lib/shops";
@@ -80,6 +81,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-dvh overflow-hidden">
+      <NavProgress />
       <OrderNotifications />
       <PushSetup />
       <StaffAnnouncementListener />

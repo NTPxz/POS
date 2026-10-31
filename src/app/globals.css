@@ -42,3 +42,74 @@ button {
     @apply rounded-2xl border border-neutral-200 bg-white shadow-sm;
   }
 }
+
+/* การเคลื่อนไหวของแอป: เปลี่ยนหน้า, modal, loading ใช้แค่ opacity/transform และไม่เกิน 200ms */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes nav-progress {
+  from { transform: scaleX(0.05); }
+  to { transform: scaleX(0.9); }
+}
+@keyframes button-spin {
+  to { transform: rotate(360deg); }
+}
+
+.page-fade {
+  animation: fade-in 160ms ease-out;
+}
+.loading-state {
+  animation: fade-in 160ms ease-out 150ms both;
+}
+.modal-overlay {
+  animation: fade-in 150ms ease-out;
+}
+.modal-overlay > :last-child {
+  animation: panel-in 200ms ease-out;
+}
+.nav-progress {
+  @apply fixed inset-x-0 top-0 z-[300] h-0.5 origin-left bg-brand-600;
+  animation: nav-progress 8s cubic-bezier(0.1, 0.7, 0.2, 1) forwards;
+}
+
+/* กำลังทำงานต่างจากกดไม่ได้: คงสีเต็มแล้วโชว์ spinner แทนการจางลง */
+.btn-primary[aria-busy="true"],
+.btn-secondary[aria-busy="true"],
+.btn-danger[aria-busy="true"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: progress;
+  opacity: 1;
+}
+.btn-primary[aria-busy="true"]::before,
+.btn-secondary[aria-busy="true"]::before,
+.btn-danger[aria-busy="true"]::before {
+  content: "";
+  flex: none;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 9999px;
+  animation: button-spin 700ms linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-fade,
+  .loading-state,
+  .modal-overlay,
+  .modal-overlay > :last-child {
+    animation: none;
+  }
+  .nav-progress {
+    animation: none;
+    transform: scaleX(0.9);
+  }
+}

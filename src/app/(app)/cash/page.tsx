@@ -1,5 +1,6 @@
 "use client";
 
+import LoadingState from "@/components/LoadingState";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -167,7 +168,7 @@ function CashPageContent() {
   if (loading && openShift === undefined) {
     return (
       <div className="flex-1 p-4 md:p-6">
-        <p className="py-16 text-center text-neutral-400">กำลังโหลด...</p>
+        <LoadingState />
       </div>
     );
   }
@@ -249,7 +250,7 @@ function CashPageContent() {
               {openError && (
                 <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{openError}</p>
               )}
-              <button type="submit" className="btn-primary w-full py-3" disabled={opening}>
+              <button type="submit" className="btn-primary w-full py-3" disabled={opening} aria-busy={opening}>
                 {opening ? "กำลังเปิดกะ..." : "เปิดกะ"}
               </button>
             </form>
@@ -452,7 +453,7 @@ function CloseShiftModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
       <form
         onSubmit={confirm}
         className="flex max-h-[92dvh] w-full max-w-md flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl"
@@ -532,7 +533,7 @@ function CloseShiftModal({
           <button type="button" className="btn-secondary flex-1" onClick={onClose}>
             ยกเลิก
           </button>
-          <button type="submit" className="btn-primary flex-1" disabled={saving}>
+          <button type="submit" className="btn-primary flex-1" disabled={saving} aria-busy={saving}>
             {saving ? "กำลังบันทึก..." : "ยืนยันปิดกะ"}
           </button>
         </div>
@@ -598,7 +599,7 @@ function AdjustModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
       <form
         onSubmit={save}
         className="flex max-h-[92dvh] w-full max-w-md flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl"
@@ -682,7 +683,7 @@ function AdjustModal({
           <button type="button" className="btn-secondary flex-1" onClick={onClose}>
             ยกเลิก
           </button>
-          <button type="submit" className="btn-primary flex-1" disabled={saving}>
+          <button type="submit" className="btn-primary flex-1" disabled={saving} aria-busy={saving}>
             {saving ? "กำลังบันทึก..." : "บันทึก"}
           </button>
         </div>

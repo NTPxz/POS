@@ -1,5 +1,6 @@
 "use client";
 
+import LoadingState from "@/components/LoadingState";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -257,7 +258,7 @@ function IncomePageContent() {
       </div>
 
       {loading ? (
-        <p className="py-16 text-center text-neutral-400">กำลังโหลด...</p>
+        <LoadingState />
       ) : loadError ? (
         <div className="py-16 text-center text-red-500">
           <AlertCircle className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
@@ -475,7 +476,7 @@ function IncomeModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
       <form
         onSubmit={save}
         className="flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl"
@@ -566,7 +567,7 @@ function IncomeModal({
           <button type="button" className="btn-secondary flex-1" onClick={onClose}>
             ยกเลิก
           </button>
-          <button type="submit" className="btn-primary flex-1" disabled={saving}>
+          <button type="submit" className="btn-primary flex-1" disabled={saving} aria-busy={saving}>
             {saving ? "กำลังบันทึก..." : "บันทึก"}
           </button>
         </div>
@@ -636,7 +637,7 @@ function ManualSaleModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
       <form
         onSubmit={save}
         className="flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl"
@@ -740,7 +741,7 @@ function ManualSaleModal({
           <button type="button" className="btn-secondary flex-1" onClick={onClose}>
             ยกเลิก
           </button>
-          <button type="submit" className="btn-primary flex-1" disabled={saving}>
+          <button type="submit" className="btn-primary flex-1" disabled={saving} aria-busy={saving}>
             {saving ? "กำลังบันทึก..." : "บันทึกยอดขาย"}
           </button>
         </div>
@@ -789,7 +790,7 @@ function IncomeCategoryModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
       <div className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl">
         <div className="flex items-center justify-between px-6 pt-5">
           <h2 className="text-xl font-bold">หมวดหมู่รายได้</h2>
@@ -813,7 +814,7 @@ function IncomeCategoryModal({
             <button
               type="submit"
               className="btn-primary"
-              disabled={saving || !name.trim()}
+              disabled={saving || !name.trim()} aria-busy={saving}
             >
               เพิ่ม
             </button>

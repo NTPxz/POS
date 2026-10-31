@@ -1,5 +1,6 @@
 "use client";
 
+import LoadingState from "@/components/LoadingState";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, Megaphone, RefreshCw, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -109,7 +110,7 @@ function AnnouncementsPageContent() {
           {sentMsg && (
             <p className="rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">{sentMsg}</p>
           )}
-          <button type="submit" className="btn-primary w-full py-3" disabled={sending}>
+          <button type="submit" className="btn-primary w-full py-3" disabled={sending} aria-busy={sending}>
             {sending ? "กำลังส่ง..." : "ส่งประกาศ"}
           </button>
         </form>
@@ -118,7 +119,7 @@ function AnnouncementsPageContent() {
       <div className="mx-auto mt-6 max-w-lg">
         <p className="mb-2 text-xs font-semibold uppercase text-neutral-400">ประกาศที่ผ่านมา</p>
         {loading ? (
-          <p className="py-10 text-center text-neutral-400">กำลังโหลด...</p>
+          <LoadingState />
         ) : loadError ? (
           <div className="py-10 text-center text-red-500">
             <AlertCircle className="mx-auto mb-2 h-8 w-8" strokeWidth={1.5} />

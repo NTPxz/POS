@@ -116,7 +116,7 @@ export default function LoginPage() {
             </p>
           )}
 
-          <button type="submit" className="btn-primary w-full" disabled={loading}>
+          <button type="submit" className="btn-primary w-full" disabled={loading} aria-busy={loading}>
             {loading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
           </button>
         </form>

@@ -1,5 +1,6 @@
 "use client";
 
+import LoadingState from "@/components/LoadingState";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, Lightbulb, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -147,7 +148,7 @@ function PlansPageContent() {
           <button
             type="submit"
             className="btn-primary inline-flex w-full items-center justify-center gap-2 py-2.5"
-            disabled={adding}
+            disabled={adding} aria-busy={adding}
           >
             <Plus className="h-4 w-4" strokeWidth={2.5} />
             {adding ? "กำลังเพิ่ม..." : "เพิ่มแผน"}
@@ -155,7 +156,7 @@ function PlansPageContent() {
         </form>
 
         {loading ? (
-          <p className="py-10 text-center text-neutral-400">กำลังโหลด...</p>
+          <LoadingState />
         ) : loadError ? (
           <div className="py-10 text-center text-red-500">
             <AlertCircle className="mx-auto mb-2 h-8 w-8" strokeWidth={1.5} />
@@ -245,7 +246,7 @@ function PlanRow({
       <button
         className="shrink-0 rounded-lg p-2 text-neutral-300 hover:bg-red-50 hover:text-red-500"
         onClick={onDelete}
-        disabled={busy}
+        disabled={busy} aria-busy={busy}
         aria-label="ลบแผน"
       >
         <Trash2 className="h-4 w-4" strokeWidth={2} />

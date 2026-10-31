@@ -1,5 +1,6 @@
 "use client";
 
+import LoadingState from "@/components/LoadingState";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -216,7 +217,7 @@ function DashboardPageContent() {
       </div>
 
       {loading ? (
-        <p className="py-16 text-center text-neutral-400">กำลังโหลด...</p>
+        <LoadingState />
       ) : loadError ? (
         <div className="py-16 text-center text-red-500">
           <AlertCircle className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />

@@ -1,5 +1,6 @@
 "use client";
 
+import LoadingState from "@/components/LoadingState";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, RefreshCw, ShoppingCart, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -84,9 +85,7 @@ export default function PosPage() {
       </div>
 
       {loading ? (
-        <p className="flex-1 py-16 text-center text-neutral-400">
-          กำลังโหลดสินค้า...
-        </p>
+        <LoadingState label="กำลังโหลดสินค้า..." />
       ) : loadError ? (
         <div className="flex-1 py-16 text-center text-red-500">
           <AlertCircle className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />

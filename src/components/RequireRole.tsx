@@ -1,5 +1,6 @@
 "use client";
 
+import LoadingState from "@/components/LoadingState";
 import { ShieldAlert } from "lucide-react";
 import { useProfile } from "@/components/ProfileProvider";
 import { hasRole, Role, ROLE_LABELS } from "@/lib/types";
@@ -15,7 +16,7 @@ export default function RequireRole({
 
   if (loading) {
     return (
-      <p className="flex-1 py-16 text-center text-neutral-400">กำลังโหลด...</p>
+      <LoadingState />
     );
   }
 

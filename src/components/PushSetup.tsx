@@ -86,14 +86,14 @@ export default function PushSetup() {
           <button
             className="btn-primary px-4 py-2 text-sm"
             onClick={enable}
-            disabled={enabling}
+            disabled={enabling} aria-busy={enabling}
           >
             {enabling ? "กำลังเปิด..." : "เปิดแจ้งเตือน"}
           </button>
           <button
             className="btn-secondary px-4 py-2 text-sm"
             onClick={dismiss}
-            disabled={enabling}
+            disabled={enabling} aria-busy={enabling}
           >
             ไว้ทีหลัง
           </button>

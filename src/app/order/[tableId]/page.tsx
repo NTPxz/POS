@@ -1,5 +1,6 @@
 "use client";
 
+import LoadingState from "@/components/LoadingState";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -199,7 +200,7 @@ export default function CustomerOrderPage({
   if (loading) {
     return (
       <CenterMessage>
-        <p className="text-neutral-400">กำลังโหลดเมนู...</p>
+        <LoadingState label="กำลังโหลดเมนู..." />
       </CenterMessage>
     );
   }
@@ -319,7 +320,7 @@ export default function CustomerOrderPage({
       )}
 
       {panelOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
+        <div className="modal-overlay fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
           <div className="absolute inset-0" onClick={() => setPanelOpen(false)} />
           <div className="relative flex max-h-[85dvh] flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)]">
             <div className="flex items-center justify-between px-5 pt-4">
@@ -438,7 +439,7 @@ export default function CustomerOrderPage({
               {round.length > 0 && (
                 <button
                   className="btn-primary w-full py-3"
-                  disabled={submitting}
+                  disabled={submitting} aria-busy={submitting}
                   onClick={submitRound}
                 >
                   {submitting ? "กำลังส่ง..." : `สั่งอาหาร (+${baht(roundTotal)})`}
