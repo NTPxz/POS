@@ -110,12 +110,14 @@ function drawReceipt(ctx: CanvasRenderingContext2D, data: ReceiptData): number {
 
   ctx.fillStyle = "#000000";
   ctx.textBaseline = "top";
+  // บาง iPhone ไม่สนใจ ctx.textAlign ทำให้ข้อความกึ่งกลางเยื้องและยอดเงินล้นขอบขวา
+  // จึงวาดชิดซ้ายเสมอแล้วคำนวณตำแหน่งจากความกว้างข้อความเอง
+  ctx.textAlign = "left";
 
   const center = (text: string, size: number, weight = 400) => {
     ctx.font = `${weight} ${size}px ${FONT}`;
-    ctx.textAlign = "center";
     for (const line of wrapText(ctx, text, contentWidth)) {
-      ctx.fillText(line, IMAGE_WIDTH / 2, y);
+      ctx.fillText(line, (IMAGE_WIDTH - ctx.measureText(line).width) / 2, y);
       y += size * 1.45;
     }
   };
@@ -123,9 +125,7 @@ function drawReceipt(ctx: CanvasRenderingContext2D, data: ReceiptData): number {
   const row = (label: string, value: string, size = 24, weight = 400) => {
     ctx.font = `${weight} ${size}px ${FONT}`;
     const valueWidth = ctx.measureText(value).width;
-    ctx.textAlign = "right";
-    ctx.fillText(value, right, y);
-    ctx.textAlign = "left";
+    ctx.fillText(value, right - valueWidth, y);
     const labelLines = wrapText(ctx, label, contentWidth - valueWidth - 16);
     labelLines.forEach((line, i) => {
       ctx.fillText(line, PADDING, y + i * size * 1.45);
@@ -152,7 +152,6 @@ function drawReceipt(ctx: CanvasRenderingContext2D, data: ReceiptData): number {
   for (const line of data.lines) {
     row(line.name, line.total, 24, 500);
     ctx.font = `400 21px ${FONT}`;
-    ctx.textAlign = "left";
     ctx.fillText(line.detail, PADDING, y);
     y += 30;
     if (line.note) {
@@ -175,7 +174,6 @@ function drawReceipt(ctx: CanvasRenderingContext2D, data: ReceiptData): number {
   if (data.change) row("เงินทอน", data.change);
   if (data.note) {
     ctx.font = `400 22px ${FONT}`;
-    ctx.textAlign = "left";
     for (const text of wrapText(ctx, `หมายเหตุ: ${data.note}`, contentWidth)) {
       ctx.fillText(text, PADDING, y);
       y += 32;
