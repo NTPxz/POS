@@ -38,6 +38,10 @@ export async function POST(request: Request) {
 
   const { error } = await admin.auth.admin.updateUserById(userId, {
     password,
+    // เจ้าของร้านรู้รหัสนี้ เจ้าตัวจึงต้องตั้งใหม่ ยกเว้นเจ้าของร้านเปลี่ยนรหัสตัวเอง
+    ...(userId === auth.userId
+      ? {}
+      : { app_metadata: { must_change_password: true } }),
   });
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });

@@ -19,7 +19,7 @@ const { data, error } = await admin.auth.admin.createUser({
   email: `phone-${phoneDigits}@rompho.staff.pos.local`,
   password,
   email_confirm: true,
-  app_metadata: { shop: "rompho" },
+  app_metadata: { shop: "rompho", must_change_password: true },
 });
 if (error) {
   console.error(error.message);

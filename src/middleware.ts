@@ -60,6 +60,16 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // บัญชีที่เจ้าของร้านตั้งรหัสให้ ต้องตั้งรหัสของตัวเองก่อนจึงจะเข้าหน้าอื่นได้
+  const isChangePasswordPage = path === "/change-password";
+  const mustChangePassword = user?.app_metadata?.must_change_password === true;
+
+  if (user && mustChangePassword !== isChangePasswordPage) {
+    const url = request.nextUrl.clone();
+    url.pathname = shopHref(shop, mustChangePassword ? "/change-password" : "/");
+    return NextResponse.redirect(url);
+  }
+
   return response;
 }
 

@@ -69,7 +69,10 @@ export async function POST(request: Request) {
       password,
       email_confirm: true,
       // handle_new_user() ใช้ค่านี้เลือกว่าจะสร้าง profile ใน schema ของร้านไหน
-      ...(shop.basePath ? { app_metadata: { shop: shop.slug } } : {}),
+      app_metadata: {
+        must_change_password: true,
+        ...(shop.basePath ? { shop: shop.slug } : {}),
+      },
     });
   if (createError || !created.user) {
     return NextResponse.json(
