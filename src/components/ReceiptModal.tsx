@@ -43,6 +43,49 @@ export default function ReceiptModal({
   saleId: string;
   onClose: () => void;
 }) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="พิมพ์บิล"
+      className="modal-overlay fixed inset-0 z-[80] flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
+    >
+      <div className="flex max-h-[92dvh] w-full max-w-md flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl">
+        <div className="flex items-center justify-between px-6 pt-5">
+          <h2 className="text-xl font-bold">พิมพ์บิล</h2>
+          <button
+            onClick={onClose}
+            aria-label="ปิด"
+            className="rounded-full p-2 text-neutral-500 hover:bg-neutral-100"
+          >
+            <X className="h-5 w-5" strokeWidth={2} />
+          </button>
+        </div>
+        <ReceiptActions saleId={saleId} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * ปุ่มพิมพ์เครื่องพิมพ์ / ดูบิล / ออกบิลเป็นรูป ใช้ทั้งใน popup และฝังในหน้าปิดบิลสำเร็จ
+ * embedded = ฝังในหน้าที่มี padding ของตัวเองอยู่แล้ว
+ */
+export function ReceiptActions({
+  saleId,
+  embedded = false,
+}: {
+  saleId: string;
+  embedded?: boolean;
+}) {
   const supabase = useMemo(() => createClient(), []);
   const shop = useShop();
   const { branches } = useBranch();
@@ -76,14 +119,6 @@ export default function ReceiptModal({
   useEffect(() => {
     load();
   }, [load]);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   const receipt: ReceiptData | null = useMemo(() => {
     if (!sale) return null;
@@ -198,33 +233,9 @@ export default function ReceiptModal({
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="พิมพ์บิล"
-      className="modal-overlay fixed inset-0 z-[80] flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
-    >
-      <div className="flex max-h-[92dvh] w-full max-w-md flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:rounded-3xl">
-        <div className="flex items-center justify-between px-6 pt-5">
-          <div className="min-w-0">
-            <h2 className="text-xl font-bold">พิมพ์บิล</h2>
-            {receipt && (
-              <p className="text-sm text-neutral-600">
-                บิล {receipt.billNo} · {receipt.total}
-              </p>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="ปิด"
-            className="rounded-full p-2 text-neutral-500 hover:bg-neutral-100"
-          >
-            <X className="h-5 w-5" strokeWidth={2} />
-          </button>
-        </div>
-
+    <>
         {loadError ? (
-          <div className="px-6 py-10 text-center text-red-600">
+          <div className={`text-center text-red-600 ${embedded ? "pt-4" : "px-6 py-10"}`}>
             <AlertCircle className="mx-auto mb-2 h-10 w-10" strokeWidth={1.5} />
             <p className="mb-3 text-sm">โหลดบิลไม่สำเร็จ: {loadError}</p>
             <button className="btn-secondary inline-flex items-center gap-2" onClick={load}>
@@ -236,8 +247,17 @@ export default function ReceiptModal({
           <LoadingState label="กำลังโหลดบิล..." />
         ) : (
           <>
+            {!embedded && (
+              <p className="px-6 text-sm text-neutral-600">
+                บิล {receipt.billNo} · {receipt.total}
+              </p>
+            )}
             {preview !== "none" && (
-              <div className="mt-3 min-h-0 flex-1 overflow-y-auto bg-neutral-100 p-4">
+              <div
+                className={`mt-3 min-h-0 bg-neutral-100 p-4 ${
+                  embedded ? "-mx-6 max-h-[45dvh] overflow-y-auto" : "flex-1 overflow-y-auto"
+                }`}
+              >
                 {preview === "image" && imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -246,14 +266,17 @@ export default function ReceiptModal({
                     className="mx-auto w-full max-w-xs bg-white shadow-sm"
                   />
                 ) : (
-                  <div className="mx-auto w-fit max-w-full overflow-x-auto bg-white shadow-sm">
+                  <div
+                    className="mx-auto max-w-full bg-white shadow-sm"
+                    style={{ width: `${paper}mm` }}
+                  >
                     <ReceiptPaper data={receipt} widthMm={paper} />
                   </div>
                 )}
               </div>
             )}
 
-            <div className="space-y-2 px-6 pb-5 pt-4">
+            <div className={`space-y-2 text-left ${embedded ? "pt-3" : "px-6 pb-5 pt-4"}`}>
               {hint && (
                 <p role="status" className="rounded-xl bg-neutral-100 px-4 py-3 text-sm text-neutral-700">
                   {hint}
@@ -267,7 +290,7 @@ export default function ReceiptModal({
 
               <button
                 type="button"
-                className="btn-primary inline-flex w-full items-center justify-center gap-2 py-3"
+                className={`${embedded ? "btn-secondary" : "btn-primary"} inline-flex w-full items-center justify-center gap-2 py-3`}
                 onClick={handlePrint}
               >
                 <Printer className="h-4 w-4" strokeWidth={2} />
@@ -341,16 +364,15 @@ export default function ReceiptModal({
             )}
           </>
         )}
-      </div>
-    </div>
+    </>
   );
 }
 
 function ReceiptPaper({ data, widthMm }: { data: ReceiptData; widthMm: number }) {
   return (
     <div
-      className="bg-white p-[3mm] text-xs leading-snug text-black"
-      style={{ width: `${widthMm}mm`, boxSizing: "border-box" }}
+      className="bg-white p-[3mm] text-left text-xs leading-snug text-black"
+      style={{ width: `${widthMm}mm`, maxWidth: "100%", boxSizing: "border-box" }}
     >
       <div className="text-center">
         <p className="text-lg font-bold leading-tight">{data.shopName}</p>

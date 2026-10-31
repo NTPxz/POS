@@ -12,9 +12,8 @@ import {
   ShoppingCart,
   Trash2,
   X,
-  Printer,
 } from "lucide-react";
-import ReceiptModal from "@/components/ReceiptModal";
+import { ReceiptActions } from "@/components/ReceiptModal";
 import { createClient } from "@/lib/supabase/client";
 import { currentShop } from "@/lib/shops";
 import { baht, formatNumber } from "@/lib/format";
@@ -775,10 +774,9 @@ function SuccessModal({
   info: { saleId: string; total: number; received: number | null; change: number | null };
   onClose: () => void;
 }) {
-  const [receiptOpen, setReceiptOpen] = useState(false);
   return (
     <div className="modal-overlay fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-sm rounded-3xl bg-white p-8 text-center">
+      <div className="max-h-[92dvh] w-full max-w-sm overflow-y-auto rounded-3xl bg-white p-6 text-center">
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-green-600">
           <CheckCircle2 className="h-9 w-9" strokeWidth={2} />
         </div>
@@ -794,20 +792,11 @@ function SuccessModal({
             </p>
           </div>
         )}
-        <button
-          className="btn-secondary mt-6 inline-flex w-full items-center justify-center gap-2 py-3"
-          onClick={() => setReceiptOpen(true)}
-        >
-          <Printer className="h-4 w-4" strokeWidth={2} />
-          พิมพ์บิล
-        </button>
-        <button className="btn-primary mt-2 w-full py-3" onClick={onClose}>
+        <ReceiptActions saleId={info.saleId} embedded />
+        <button className="btn-primary mt-3 w-full py-3" onClick={onClose}>
           ขายรายการต่อไป
         </button>
       </div>
-      {receiptOpen && (
-        <ReceiptModal saleId={info.saleId} onClose={() => setReceiptOpen(false)} />
-      )}
     </div>
   );
 }

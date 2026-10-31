@@ -16,9 +16,8 @@ import {
   Trash2,
   Users,
   X,
-  Printer,
 } from "lucide-react";
-import ReceiptModal from "@/components/ReceiptModal";
+import { ReceiptActions } from "@/components/ReceiptModal";
 import { createClient } from "@/lib/supabase/client";
 import { currentShop } from "@/lib/shops";
 import { baht, formatDateTime, formatNumber } from "@/lib/format";
@@ -974,7 +973,6 @@ function TableCheckoutModal({
   const [done, setDone] = useState<{ total: number; change: number | null } | null>(
     null
   );
-  const [receiptOpen, setReceiptOpen] = useState(false);
 
   const subtotal = Number(sale.subtotal);
   const discount = Math.max(parseFloat(discountStr) || 0, 0);
@@ -1007,7 +1005,7 @@ function TableCheckoutModal({
   if (done) {
     return (
       <div className="modal-overlay fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
-        <div className="w-full max-w-sm rounded-3xl bg-white p-8 text-center">
+        <div className="max-h-[92dvh] w-full max-w-sm overflow-y-auto rounded-3xl bg-white p-6 text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-green-600">
             <CheckCircle2 className="h-9 w-9" strokeWidth={2} />
           </div>
@@ -1023,20 +1021,11 @@ function TableCheckoutModal({
               </p>
             </div>
           )}
-          <button
-            className="btn-secondary mt-6 inline-flex w-full items-center justify-center gap-2 py-3"
-            onClick={() => setReceiptOpen(true)}
-          >
-            <Printer className="h-4 w-4" strokeWidth={2} />
-            พิมพ์บิล
-          </button>
-          <button className="btn-primary mt-2 w-full py-3" onClick={onDone}>
+          <ReceiptActions saleId={sale.id} embedded />
+          <button className="btn-primary mt-3 w-full py-3" onClick={onDone}>
             เสร็จสิ้น
           </button>
         </div>
-        {receiptOpen && (
-          <ReceiptModal saleId={sale.id} onClose={() => setReceiptOpen(false)} />
-        )}
       </div>
     );
   }
